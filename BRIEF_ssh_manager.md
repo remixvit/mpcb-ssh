@@ -414,7 +414,7 @@ server {
 
 ## Окружение разработчика
 
-- **Деплой**: 192.168.1.201, порт 8050 (рядом с cut-manager)
+- **Деплой**: 192.168.1.201, порт 8882
 - **Продакшн**: ssh.mpcbstudio.com (через nginx reverse proxy)
 - **GitHub**: remixvit/mpcb-ssh (создать)
 - **Node.js**: 20+

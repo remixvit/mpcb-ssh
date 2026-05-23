@@ -2,7 +2,7 @@ services:
   mpcb-ssh:
     build: ./server
     ports:
-      - "8050:3000"
+      - "8882:3000"
     volumes:
       - ./data:/app/data
     environment:

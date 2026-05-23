@@ -34,7 +34,7 @@ cp server/.env.example .env
 docker compose up -d
 ```
 
-App available at `http://localhost:8050`.
+App available at `http://localhost:8882`.
 
 ## Agent
 
