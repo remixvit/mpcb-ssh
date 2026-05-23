@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 
 export default function Keys() {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     api.get('/keys').then(r => setKeys(r.data)).finally(() => setLoading(false));
@@ -19,6 +21,7 @@ export default function Keys() {
     <div>
       <div className="page-header">
         <h1>SSH Keys</h1>
+        <button className="btn btn-primary" onClick={() => navigate('/keys/upload')}>+ Upload Key</button>
       </div>
 
       {loading ? (
