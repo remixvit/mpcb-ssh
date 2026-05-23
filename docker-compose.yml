@@ -1,0 +1,13 @@
+services:
+  mpcb-ssh:
+    build: ./server
+    ports:
+      - "8050:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - DB_PATH=/app/data/db.sqlite
+    restart: unless-stopped
