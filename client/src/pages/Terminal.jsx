@@ -22,12 +22,26 @@ export default function Terminal() {
       fontFamily: 'Consolas, "Courier New", monospace',
       fontSize: 14,
       cursorBlink: true,
+      copyOnSelect: true,
+      scrollback: 5000,
+      rightClickSelectsWord: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
     fit.fit();
+
+    // Right click → paste from clipboard
+    containerRef.current.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && wsRef.current?.readyState === WebSocket.OPEN && sessionRef.current) {
+          wsRef.current.send(JSON.stringify({ type: 'terminal:input', sessionId: sessionRef.current, data: text }));
+        }
+      } catch {}
+    });
     xtermRef.current = term;
     fitRef.current = fit;
 
