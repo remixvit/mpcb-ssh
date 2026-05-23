@@ -94,4 +94,13 @@ router.get('/me', authenticate, (req, res) => {
   res.json(user);
 });
 
+// Returns encryption salt for a username — needed by client to derive encryption key
+router.get('/encryption-salt', (req, res) => {
+  const { username } = req.query;
+  if (!username) return res.status(400).json({ error: 'username required' });
+  const user = getDb().prepare('SELECT encryption_salt FROM users WHERE username = ?').get(username);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ salt: user.encryption_salt });
+});
+
 module.exports = router;

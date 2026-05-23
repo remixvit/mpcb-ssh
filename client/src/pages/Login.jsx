@@ -16,6 +16,18 @@ export default function Login() {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', form);
+      // Derive encryption key from password and store in sessionStorage (cleared on tab close)
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(form.password), 'PBKDF2', false, ['deriveBits']);
+      const saltRes = await api.get(`/auth/encryption-salt?username=${encodeURIComponent(form.username)}`);
+      const saltHex = saltRes.data.salt;
+      const saltBytes = new Uint8Array(saltHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+      const keyBits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-256' },
+        keyMaterial, 256
+      );
+      const keyBase64 = btoa(String.fromCharCode(...new Uint8Array(keyBits)));
+      sessionStorage.setItem('decryptionKey', keyBase64);
       login(data.accessToken, data.user);
       navigate('/');
     } catch (err) {

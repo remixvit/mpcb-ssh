@@ -36,7 +36,15 @@ export default function Terminal() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'terminal:open', serverId: parseInt(id), token }));
+      const decryptionKey = sessionStorage.getItem('decryptionKey');
+      ws.send(JSON.stringify({
+        type: 'terminal:open',
+        serverId: parseInt(id),
+        token,
+        decryptionKey,
+        cols: term.cols,
+        rows: term.rows,
+      }));
     };
 
     ws.onmessage = (e) => {
