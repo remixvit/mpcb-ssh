@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
-
-const COLORS = ['#e94560', '#2ecc71', '#3498db', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#e74c3c'];
+import Icon, { LABEL_COLORS } from '../components/Icon';
 
 const EMPTY = { name: '', host: '', port: '22', username: 'root', key_id: '', password: '', tags: '', color: '', jump_server_id: '' };
 
@@ -14,7 +13,7 @@ export default function ServerForm() {
   const [form, setForm] = useState(EMPTY);
   const [keys, setKeys] = useState([]);
   const [servers, setServers] = useState([]);
-  const [authMode, setAuthMode] = useState('key'); // 'key' | 'password'
+  const [authMode, setAuthMode] = useState('key');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -51,7 +50,6 @@ export default function ServerForm() {
     setLoading(true);
 
     const decryptionKey = sessionStorage.getItem('decryptionKey');
-
     const payload = {
       name: form.name,
       host: form.host,
@@ -83,55 +81,62 @@ export default function ServerForm() {
   }
 
   return (
-    <div style={{ maxWidth: 600 }}>
-      <div className="page-header">
-        <h1>{isEdit ? 'Edit Server' : 'Add Server'}</h1>
-        <button className="btn btn-ghost" onClick={() => navigate('/servers')}>← Back</button>
+    <div className="page-enter" style={{ maxWidth: 640 }}>
+      <div className="page-head">
+        <div>
+          <div className="page-title">{isEdit ? 'Edit Server' : 'Add Server'}</div>
+          <div className="page-sub">{isEdit ? 'Update connection details' : 'Configure a new SSH connection'}</div>
+        </div>
+        <div style={{ flex: 1 }}></div>
+        <button className="btn ghost" onClick={() => navigate('/servers')}>
+          <Icon name="arrowR" style={{ transform: 'rotate(180deg)' }} /> Back
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <form onSubmit={handleSubmit} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: 24 }}>
 
-        {/* Name */}
-        <Field label="Name">
-          <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="My VPS" required />
-        </Field>
-
-        {/* Host + Port */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 12 }}>
-          <Field label="Host">
-            <input value={form.host} onChange={e => set('host', e.target.value)} placeholder="192.168.1.1 or example.com" required />
-          </Field>
-          <Field label="Port">
-            <input type="number" value={form.port} onChange={e => set('port', e.target.value)} min={1} max={65535} required />
-          </Field>
+        <div className="field">
+          <label>Display name</label>
+          <input className="input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="prod-api-01" required autoFocus />
         </div>
 
-        {/* Username */}
-        <Field label="Username">
-          <input value={form.username} onChange={e => set('username', e.target.value)} placeholder="root" required />
-        </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 12 }}>
+          <div className="field">
+            <label>Host / IP</label>
+            <input className="input mono" value={form.host} onChange={e => set('host', e.target.value)} placeholder="192.168.1.1" required />
+          </div>
+          <div className="field">
+            <label>Port</label>
+            <input className="input mono" type="number" value={form.port} onChange={e => set('port', e.target.value)} min={1} max={65535} required />
+          </div>
+        </div>
 
-        {/* Auth mode */}
+        <div className="field">
+          <label>Username</label>
+          <input className="input mono" value={form.username} onChange={e => set('username', e.target.value)} placeholder="root" required />
+        </div>
+
         <div>
-          <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-muted)', fontSize: 13 }}>Authentication</label>
+          <div className="field" style={{ marginBottom: 10 }}>
+            <label>Authentication</label>
+          </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button type="button" className={`btn ${authMode === 'key' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setAuthMode('key')}>
-              SSH Key
+            <button type="button" className={`btn sm ${authMode === 'key' ? 'primary' : ''}`} onClick={() => setAuthMode('key')}>
+              <Icon name="key" />SSH Key
             </button>
-            <button type="button" className={`btn ${authMode === 'password' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setAuthMode('password')}>
-              Password
+            <button type="button" className={`btn sm ${authMode === 'password' ? 'primary' : ''}`} onClick={() => setAuthMode('password')}>
+              <Icon name="lock" />Password
             </button>
           </div>
 
           {authMode === 'key' ? (
-            <select value={form.key_id} onChange={e => set('key_id', e.target.value)}>
+            <select className="select" value={form.key_id} onChange={e => set('key_id', e.target.value)}>
               <option value="">— Select SSH key —</option>
-              {keys.map(k => (
-                <option key={k.id} value={k.id}>{k.name}</option>
-              ))}
+              {keys.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select>
           ) : (
             <input
+              className="input mono"
               type="password"
               value={form.password}
               onChange={e => set('password', e.target.value)}
@@ -140,67 +145,64 @@ export default function ServerForm() {
           )}
         </div>
 
-        {/* Jump server */}
-        <Field label="Jump Server (ProxyJump)" hint="Optional — connect through a bastion host">
-          <select value={form.jump_server_id} onChange={e => set('jump_server_id', e.target.value)}>
+        <div className="field">
+          <label>Jump server <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--text-faint)' }}>(ProxyJump — optional)</span></label>
+          <select className="select" value={form.jump_server_id} onChange={e => set('jump_server_id', e.target.value)}>
             <option value="">— None —</option>
-            {servers.map(s => (
-              <option key={s.id} value={s.id}>{s.name} ({s.host})</option>
-            ))}
+            {servers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.host})</option>)}
           </select>
-        </Field>
+        </div>
 
-        {/* Tags */}
-        <Field label="Tags" hint="Comma separated: production, web, db">
-          <input value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="production, web" />
-        </Field>
+        <div className="field">
+          <label>Tags <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--text-faint)' }}>(comma separated)</span></label>
+          <input className="input" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="production, web, db" />
+        </div>
 
-        {/* Color */}
-        <div>
-          <label style={{ display: 'block', marginBottom: 8, color: 'var(--text-muted)', fontSize: 13 }}>Color label</label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="field">
+          <label>Color label</label>
+          <div className="color-row">
             <div
               onClick={() => set('color', '')}
               style={{
-                width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
-                background: 'var(--bg)', border: `2px solid ${!form.color ? 'var(--accent)' : 'var(--border)'}`,
+                width: 24, height: 24, borderRadius: '50%', cursor: 'pointer',
+                background: 'var(--panel)', border: `2px solid ${!form.color ? 'var(--accent)' : 'var(--border)'}`,
+                boxShadow: !form.color ? 'var(--accent-glow)' : 'none',
               }}
             />
-            {COLORS.map(c => (
-              <div key={c} onClick={() => set('color', c)} style={{
-                width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
-                background: c, border: `2px solid ${form.color === c ? '#fff' : 'transparent'}`,
-                transition: 'border 0.15s',
-              }} />
+            {LABEL_COLORS.map(c => (
+              <div
+                key={c.value}
+                className={`color-swatch${form.color === c.value ? ' active' : ''}`}
+                style={{
+                  background: c.value,
+                  boxShadow: form.color === c.value ? `0 0 12px ${c.value}88` : '',
+                }}
+                onClick={() => set('color', c.value)}
+              />
             ))}
           </div>
         </div>
 
         {error && (
-          <div style={{ color: 'var(--danger)', fontSize: 13, padding: '8px 12px', background: 'rgba(231,76,60,.1)', borderRadius: 6 }}>
-            {error}
+          <div style={{ color: 'var(--danger)', fontSize: 13, padding: '8px 12px', background: 'rgba(240,113,120,0.1)', borderRadius: 6 }}>
+            ⚠ {error}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-ghost" onClick={() => navigate('/servers')}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Server'}
+          <button type="button" className="btn ghost" onClick={() => navigate('/servers')}>Cancel</button>
+          <button type="submit" className="btn primary" disabled={loading}>
+            {loading ? (
+              <>
+                <span className="activity-bar" style={{ marginRight: 4 }}><span/><span/><span/><span/></span>
+                Saving…
+              </>
+            ) : (
+              <><Icon name={isEdit ? 'check' : 'plus'} />{isEdit ? 'Save changes' : 'Add server'}</>
+            )}
           </button>
         </div>
       </form>
-    </div>
-  );
-}
-
-function Field({ label, hint, children }) {
-  return (
-    <div>
-      <label style={{ display: 'block', marginBottom: 6, color: 'var(--text-muted)', fontSize: 13 }}>
-        {label}
-        {hint && <span style={{ marginLeft: 8, fontWeight: 400, opacity: 0.7 }}>{hint}</span>}
-      </label>
-      {children}
     </div>
   );
 }

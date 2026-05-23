@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import { useAuthStore } from '../store/auth';
+import Icon from '../components/Icon';
 
 export default function Terminal() {
   const { id } = useParams();
@@ -18,13 +19,23 @@ export default function Terminal() {
 
   useEffect(() => {
     const term = new XTerm({
-      theme: { background: '#0d0d1a', foreground: '#eaeaea', cursor: '#e94560' },
-      fontFamily: 'Consolas, "Courier New", monospace',
-      fontSize: 14,
+      theme: {
+        background: '#0d1518',
+        foreground: '#eeffff',
+        cursor: '#80cbc4',
+        cursorAccent: '#0d1518',
+        selectionBackground: 'rgba(128,203,196,0.25)',
+        black: '#263238', red: '#f07178', green: '#c3e88d', yellow: '#ffcb6b',
+        blue: '#82aaff', magenta: '#c792ea', cyan: '#89ddff', white: '#eeffff',
+        brightBlack: '#546e7a', brightRed: '#f07178', brightGreen: '#c3e88d',
+        brightYellow: '#ffcb6b', brightBlue: '#82aaff', brightMagenta: '#c792ea',
+        brightCyan: '#89ddff', brightWhite: '#ffffff',
+      },
+      fontFamily: '"JetBrains Mono", Consolas, "Courier New", monospace',
+      fontSize: 13,
+      lineHeight: 1.4,
       cursorBlink: true,
-      copyOnSelect: true,
       scrollback: 5000,
-      rightClickSelectsWord: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -32,7 +43,12 @@ export default function Terminal() {
     term.open(containerRef.current);
     fit.fit();
 
-    // Right click → paste from clipboard
+    // Copy selection to clipboard on mouse-up (xterm v5 doesn't have copyOnSelect)
+    term.onSelectionChange(() => {
+      const sel = term.getSelection();
+      if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+    });
+
     containerRef.current.addEventListener('contextmenu', async (e) => {
       e.preventDefault();
       try {
@@ -42,6 +58,7 @@ export default function Terminal() {
         }
       } catch {}
     });
+
     xtermRef.current = term;
     fitRef.current = fit;
 
@@ -66,7 +83,11 @@ export default function Terminal() {
       if (msg.type === 'terminal:opened') {
         sessionRef.current = msg.sessionId;
       } else if (msg.type === 'terminal:data') {
-        term.write(msg.data);
+        // Decode base64 → Uint8Array so xterm renders binary data correctly
+        const bin = atob(msg.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        term.write(bytes);
       } else if (msg.type === 'terminal:error') {
         term.write(`\r\n\x1b[31mError: ${msg.error}\x1b[0m\r\n`);
       }
@@ -86,7 +107,8 @@ export default function Terminal() {
         ws.send(JSON.stringify({
           type: 'terminal:resize',
           sessionId: sessionRef.current,
-          cols: term.cols, rows: term.rows,
+          cols: term.cols,
+          rows: term.rows,
         }));
       }
     };
@@ -103,17 +125,23 @@ export default function Terminal() {
   }, [id]);
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', margin: '-28px -32px', background: '#0d0d1a' }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px',
-        background: 'var(--bg-panel)', borderBottom: '1px solid var(--border)',
-      }}>
-        <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 13 }} onClick={() => navigate('/servers')}>
-          ← Back
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', margin: '-28px -32px -40px', background: '#0d1518' }}>
+      <div className="term-tabs" style={{ flexShrink: 0 }}>
+        <button className="btn ghost sm" style={{ margin: '0 8px', padding: '4px 10px', fontSize: 12 }} onClick={() => navigate('/servers')}>
+          <Icon name="arrowR" style={{ transform: 'rotate(180deg)' }} /> Back
         </button>
-        <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Server #{id}</span>
+        <div className="term-tab active">
+          <span className="row-tag-dot" style={{ background: 'var(--accent)', boxShadow: 'var(--accent-glow)' }} />
+          <span>Server #{id}</span>
+        </div>
+        <div className="term-status">
+          <span className="dot pulse"></span>
+          <span>SSH-2.0</span>
+          <span style={{ color: 'var(--text-faint)' }}>·</span>
+          <span>chacha20-poly1305</span>
+        </div>
       </div>
-      <div ref={containerRef} style={{ flex: 1, padding: 4 }} />
+      <div ref={containerRef} style={{ flex: 1, padding: 4, minHeight: 0 }} />
     </div>
   );
 }

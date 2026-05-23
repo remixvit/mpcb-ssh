@@ -1,15 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import Icon, { ColorDot } from '../components/Icon';
+import StatusBadge from '../components/StatusBadge';
 
 export default function Servers() {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
     api.get('/servers').then(r => setServers(r.data)).finally(() => setLoading(false));
   }, []);
+
+  const filtered = useMemo(() =>
+    servers.filter(s => !q || (s.name + s.host + (s.tags || '')).toLowerCase().includes(q.toLowerCase())),
+    [q, servers]
+  );
 
   async function handleDelete(id) {
     if (!confirm('Delete this server?')) return;
@@ -18,35 +26,86 @@ export default function Servers() {
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Servers</h1>
-        <button className="btn btn-primary" onClick={() => navigate('/servers/new')}>+ Add Server</button>
+    <div className="page-enter">
+      <div className="page-head">
+        <div>
+          <div className="page-title">Servers</div>
+          <div className="page-sub">{filtered.length} of {servers.length} · ready to connect</div>
+        </div>
+        <div style={{ flex: 1 }}></div>
+        <div className="input-icon" style={{ width: 260 }}>
+          <Icon name="search" />
+          <input className="input" placeholder="Search by name, host…" value={q} onChange={e => setQ(e.target.value)} />
+        </div>
+        <button className="btn primary" onClick={() => navigate('/servers/new')}>
+          <Icon name="plus" />Add server
+        </button>
       </div>
 
       {loading ? (
-        <p style={{ color: 'var(--text-muted)' }}>Loading...</p>
+        <div style={{ color: 'var(--text-dim)', padding: 40, textAlign: 'center' }}>Loading…</div>
       ) : servers.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🖥</div>
-          <div>No servers yet. Add your first server to get started.</div>
+        <div className="card" style={{ padding: 60, textAlign: 'center' }}>
+          <div className="empty">
+            <Icon name="server" className="ico" style={{ width: 32, height: 32 }} />
+            <div style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 12 }}>No servers yet</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>Add your first server to get started</div>
+            <button className="btn primary" style={{ marginTop: 20 }} onClick={() => navigate('/servers/new')}>
+              <Icon name="plus" />Add server
+            </button>
+          </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {servers.map(s => (
-            <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px' }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: s.color || 'var(--text-muted)', flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{s.name}</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{s.username}@{s.host}:{s.port}</div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary" onClick={() => navigate(`/terminal/${s.id}`)}>Connect</button>
-                <button className="btn btn-ghost" onClick={() => navigate(`/servers/${s.id}`)}>Edit</button>
-                <button className="btn btn-danger" onClick={() => handleDelete(s.id)}>Delete</button>
-              </div>
-            </div>
-          ))}
+        <div className="card">
+          <table className="table">
+            <thead><tr>
+              <th>Name</th>
+              <th>Host</th>
+              <th>User</th>
+              <th>Auth</th>
+              <th>Status</th>
+              <th style={{ width: 210 }}></th>
+            </tr></thead>
+            <tbody>
+              {filtered.map(s => (
+                <tr key={s.id}>
+                  <td>
+                    <span className="row-tag-dot" style={{ background: s.color || 'var(--accent)', boxShadow: `0 0 8px ${s.color || '#80cbc4'}66` }} />
+                    <b>{s.name}</b>
+                  </td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{s.host}:{s.port}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{s.username}</td>
+                  <td>
+                    <span className="badge">
+                      <Icon name={s.auth_type === 'key' ? 'key' : 'lock'} />
+                      {s.auth_type === 'key' ? 'Key' : 'Password'}
+                    </span>
+                  </td>
+                  <td><StatusBadge status="offline" /></td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'inline-flex', gap: 6 }}>
+                      <button className="btn ghost sm" title="Edit" onClick={() => navigate(`/servers/${s.id}`)}>
+                        <Icon name="edit" />
+                      </button>
+                      <button className="btn ghost sm" title="Delete" onClick={() => handleDelete(s.id)}>
+                        <Icon name="trash" />
+                      </button>
+                      <button className="btn primary sm" onClick={() => navigate(`/terminal/${s.id}`)}>
+                        <Icon name="terminal" />Connect
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan="6">
+                    <div className="empty"><Icon name="server" /><div>No servers match "{q}"</div></div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

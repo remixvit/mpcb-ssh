@@ -32,7 +32,9 @@ function send(ws, obj) {
 }
 
 function writeToTerminal(ws, sessionId, data) {
-  send(ws, { type: 'terminal:data', sessionId, data });
+  // Always send as base64 so binary SSH data survives JSON transport
+  const b64 = Buffer.isBuffer(data) ? data.toString('base64') : Buffer.from(data, 'binary').toString('base64');
+  send(ws, { type: 'terminal:data', sessionId, data: b64 });
 }
 
 async function handleOpen(ws, msg) {
@@ -110,11 +112,11 @@ async function handleOpen(ws, msg) {
       if (session) session.sshStream = stream;
 
       stream.on('data', (data) => {
-        writeToTerminal(ws, sessionId, data.toString('binary'));
+        writeToTerminal(ws, sessionId, data);
       });
 
       stream.stderr.on('data', (data) => {
-        writeToTerminal(ws, sessionId, data.toString('binary'));
+        writeToTerminal(ws, sessionId, data);
       });
 
       stream.on('close', () => {

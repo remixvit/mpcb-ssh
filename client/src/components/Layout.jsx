@@ -1,18 +1,22 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth';
 import api from '../api';
+import Icon from './Icon';
 
 const NAV = [
-  { to: '/',        label: 'Dashboard',  icon: '⊞' },
-  { to: '/servers', label: 'Servers',    icon: '🖥' },
-  { to: '/keys',    label: 'SSH Keys',   icon: '🔑' },
-  { to: '/tunnels', label: 'Tunnels',    icon: '⇄' },
-  { to: '/agents',  label: 'Agents',     icon: '◈' },
+  { to: '/',        label: 'Dashboard', icon: 'dashboard', group: 'Workspace', end: true },
+  { to: '/servers', label: 'Servers',   icon: 'server',    group: 'Workspace' },
+  { to: '/keys',    label: 'SSH Keys',  icon: 'key',       group: 'Security' },
+  { to: '/tunnels', label: 'Tunnels',   icon: 'tunnel',    group: 'Network' },
+  { to: '/agents',  label: 'Agents',    icon: 'agent',     group: 'Network' },
 ];
+
+const GROUPS = ['Workspace', 'Security', 'Network'];
 
 export default function Layout({ children }) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
 
   async function handleLogout() {
     try { await api.post('/auth/logout'); } catch {}
@@ -20,54 +24,56 @@ export default function Layout({ children }) {
     navigate('/login');
   }
 
+  const currentNav = NAV.find(n => n.end ? location.pathname === n.to : location.pathname.startsWith(n.to));
+  const initials = user?.username?.slice(0, 2).toUpperCase() || 'ME';
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <aside style={{
-        width: 'var(--sidebar-w)', minWidth: 'var(--sidebar-w)',
-        background: 'var(--bg-panel)', borderRight: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column', padding: '0',
-      }}>
-        <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--accent)', letterSpacing: 1 }}>MPCB SSH</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{user?.username}</div>
+    <div className="app">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">M</div>
+          <div className="brand-name">MPCB SSH<small>self-hosted</small></div>
         </div>
 
-        <nav style={{ flex: 1, padding: '12px 8px' }}>
-          {NAV.map(({ to, label, icon }) => (
-            <NavLink key={to} to={to} end={to === '/'} style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 12px', borderRadius: 6, marginBottom: 2,
-              color: isActive ? 'var(--text)' : 'var(--text-muted)',
-              background: isActive ? 'var(--bg-card)' : 'transparent',
-              transition: 'all 0.15s',
-              fontSize: 14,
-            })}>
-              <span style={{ fontSize: 16 }}>{icon}</span>
-              {label}
-            </NavLink>
-          ))}
-        </nav>
+        {GROUPS.map(g => (
+          <div key={g}>
+            <div className="nav-group-label">{g}</div>
+            {NAV.filter(n => n.group === g).map(n => (
+              <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+                <Icon name={n.icon} />
+                <span>{n.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        ))}
 
-        <div style={{ padding: '12px 8px', borderTop: '1px solid var(--border)' }}>
-          <NavLink to="/settings" style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:6, color:'var(--text-muted)', fontSize:14, marginBottom:2 }}>
-            ⚙ Settings
-          </NavLink>
-          <button onClick={handleLogout} style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            width: '100%', padding: '9px 12px', borderRadius: 6,
-            background: 'transparent', color: 'var(--text-muted)', fontSize: 14,
-            transition: 'all 0.15s',
-          }}
-            onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; }}
-          >
-            ⎋ Logout
-          </button>
+        <div className="sidebar-footer">
+          <div className="user-chip">
+            <div className="user-avatar">{initials}</div>
+            <div className="user-meta">
+              <div className="user-name">{user?.username || 'user'}</div>
+              <div className="user-host">mpcb.local</div>
+            </div>
+            <Icon name="logout" style={{ color: 'var(--text-faint)', cursor: 'pointer' }} onClick={handleLogout} />
+          </div>
         </div>
       </aside>
 
-      <main style={{ flex: 1, padding: '28px 32px', overflow: 'auto' }}>
-        {children}
+      <main className="main">
+        <header className="topbar">
+          <div className="crumbs">
+            <span>MPCB</span>
+            <span className="sep">/</span>
+            <span className="here">{currentNav?.label || 'Terminal'}</span>
+          </div>
+          <div className="topbar-spacer"></div>
+          <div className="topbar-pill"><span className="dot pulse"></span> daemon healthy</div>
+          <div className="topbar-pill"><Icon name="shield" style={{ width: 11, height: 11 }} /> TLS 1.3</div>
+        </header>
+
+        <div className="content" key={location.pathname}>
+          {children}
+        </div>
       </main>
     </div>
   );
