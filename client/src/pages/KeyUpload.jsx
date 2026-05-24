@@ -120,7 +120,7 @@ export default function KeyUpload() {
               : <span>Drop file or click to browse <span style={{ color: 'var(--text-faint)' }}>(id_rsa, id_ed25519, *.pem)</span></span>
             }
           </div>
-          <input ref={fileRef} type="file" accept=".pem,.key,.rsa,.ed25519,*" style={{ display: 'none' }} onChange={handleFile} />
+          <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={handleFile} />
 
           <textarea
             className="input"
