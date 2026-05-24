@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -16,6 +16,64 @@ export default function Terminal() {
   const fitRef = useRef(null);
   const wsRef = useRef(null);
   const sessionRef = useRef(null);
+  const [disconnected, setDisconnected] = useState(false);
+
+  const connect = useCallback((term, fit) => {
+    sessionRef.current = null;
+    setDisconnected(false);
+
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}/ws`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      const decryptionKey = sessionStorage.getItem('decryptionKey');
+      ws.send(JSON.stringify({
+        type: 'terminal:open',
+        serverId: parseInt(id),
+        token,
+        decryptionKey,
+        cols: term.cols,
+        rows: term.rows,
+      }));
+    };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'terminal:opened') {
+        sessionRef.current = msg.sessionId;
+      } else if (msg.type === 'terminal:data') {
+        const bin = atob(msg.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        term.write(bytes);
+      } else if (msg.type === 'terminal:error') {
+        term.write(`\r\n\x1b[31mError: ${msg.error}\x1b[0m\r\n`);
+        setDisconnected(true);
+      }
+    };
+
+    ws.onclose = () => {
+      term.write('\r\n\x1b[33mConnection closed\x1b[0m\r\n');
+      setDisconnected(true);
+    };
+
+    ws.onerror = () => setDisconnected(true);
+  }, [id, token]);
+
+  const handleReconnect = useCallback(() => {
+    const term = xtermRef.current;
+    const fit = fitRef.current;
+    if (!term || !fit) return;
+
+    // Close old WS if still open
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      wsRef.current.close();
+    }
+
+    term.write('\r\n\x1b[90m--- Reconnecting... ---\x1b[0m\r\n');
+    connect(term, fit);
+  }, [connect]);
 
   useEffect(() => {
     const term = new XTerm({
@@ -43,7 +101,6 @@ export default function Terminal() {
     term.open(containerRef.current);
     fit.fit();
 
-    // Copy selection to clipboard on mouse-up (xterm v5 doesn't have copyOnSelect)
     term.onSelectionChange(() => {
       const sel = term.getSelection();
       if (sel) navigator.clipboard.writeText(sel).catch(() => {});
@@ -62,49 +119,18 @@ export default function Terminal() {
     xtermRef.current = term;
     fitRef.current = fit;
 
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${location.host}/ws`);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      const decryptionKey = sessionStorage.getItem('decryptionKey');
-      ws.send(JSON.stringify({
-        type: 'terminal:open',
-        serverId: parseInt(id),
-        token,
-        decryptionKey,
-        cols: term.cols,
-        rows: term.rows,
-      }));
-    };
-
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'terminal:opened') {
-        sessionRef.current = msg.sessionId;
-      } else if (msg.type === 'terminal:data') {
-        // Decode base64 → Uint8Array so xterm renders binary data correctly
-        const bin = atob(msg.data);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        term.write(bytes);
-      } else if (msg.type === 'terminal:error') {
-        term.write(`\r\n\x1b[31mError: ${msg.error}\x1b[0m\r\n`);
-      }
-    };
-
-    ws.onclose = () => term.write('\r\n\x1b[33mConnection closed\x1b[0m\r\n');
+    connect(term, fit);
 
     term.onData(data => {
-      if (ws.readyState === WebSocket.OPEN && sessionRef.current) {
-        ws.send(JSON.stringify({ type: 'terminal:input', sessionId: sessionRef.current, data }));
+      if (wsRef.current?.readyState === WebSocket.OPEN && sessionRef.current) {
+        wsRef.current.send(JSON.stringify({ type: 'terminal:input', sessionId: sessionRef.current, data }));
       }
     });
 
     const onResize = () => {
       fit.fit();
-      if (ws.readyState === WebSocket.OPEN && sessionRef.current) {
-        ws.send(JSON.stringify({
+      if (wsRef.current?.readyState === WebSocket.OPEN && sessionRef.current) {
+        wsRef.current.send(JSON.stringify({
           type: 'terminal:resize',
           sessionId: sessionRef.current,
           cols: term.cols,
@@ -116,10 +142,10 @@ export default function Terminal() {
 
     return () => {
       window.removeEventListener('resize', onResize);
-      if (sessionRef.current && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'terminal:close', sessionId: sessionRef.current }));
+      if (sessionRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'terminal:close', sessionId: sessionRef.current }));
       }
-      ws.close();
+      wsRef.current?.close();
       term.dispose();
     };
   }, [id]);
@@ -131,15 +157,25 @@ export default function Terminal() {
           <Icon name="arrowR" style={{ transform: 'rotate(180deg)' }} /> Back
         </button>
         <div className="term-tab active">
-          <span className="row-tag-dot" style={{ background: 'var(--accent)', boxShadow: 'var(--accent-glow)' }} />
+          <span className="row-tag-dot" style={{ background: disconnected ? '#f07178' : 'var(--accent)', boxShadow: disconnected ? 'none' : 'var(--accent-glow)' }} />
           <span>Server #{id}</span>
         </div>
-        <div className="term-status">
-          <span className="dot pulse"></span>
-          <span>SSH-2.0</span>
-          <span style={{ color: 'var(--text-faint)' }}>·</span>
-          <span>chacha20-poly1305</span>
-        </div>
+        {disconnected ? (
+          <button
+            className="btn ghost sm"
+            style={{ marginLeft: 8, padding: '4px 10px', fontSize: 12, color: '#c3e88d', borderColor: '#c3e88d33' }}
+            onClick={handleReconnect}
+          >
+            <Icon name="refresh" /> Reconnect
+          </button>
+        ) : (
+          <div className="term-status">
+            <span className="dot pulse"></span>
+            <span>SSH-2.0</span>
+            <span style={{ color: 'var(--text-faint)' }}>·</span>
+            <span>chacha20-poly1305</span>
+          </div>
+        )}
       </div>
       <div ref={containerRef} style={{ flex: 1, padding: 4, minHeight: 0 }} />
     </div>

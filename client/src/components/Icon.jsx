@@ -12,6 +12,7 @@ const ICONS = {
   lock: <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></>,
   arrow: <><path d="M5 12h14M13 5l7 7-7 7"/></>,
   arrowR: <><path d="M9 6l6 6-6 6"/></>,
+  refresh: <><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></>,
   power: <><path d="M12 3v9"/><path d="M6 7a8 8 0 1 0 12 0"/></>,
   trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></>,
   edit: <><path d="M4 20h4l11-11-4-4L4 16z"/><path d="M14 6l4 4"/></>,
