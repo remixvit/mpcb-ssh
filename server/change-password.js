@@ -38,8 +38,9 @@ const newKey = deriveKey(newPass, user.encryption_salt);
 const keys = db.prepare('SELECT * FROM ssh_keys WHERE user_id = ?').all(user.id);
 console.log(`Re-encrypting ${keys.length} SSH key(s)...`);
 
-for (const k of keys) {
-  try {
+// Everything in one transaction — if anything fails, nothing is written
+const migrate = db.transaction(() => {
+  for (const k of keys) {
     const decipher = crypto.createDecipheriv('aes-256-gcm', oldKey, Buffer.from(k.iv, 'base64'));
     decipher.setAuthTag(Buffer.from(k.auth_tag, 'base64'));
     const plain = Buffer.concat([
@@ -56,13 +57,18 @@ for (const k of keys) {
       .run(encrypted.toString('base64'), iv.toString('base64'), authTag.toString('base64'), k.id);
 
     console.log(`  ✓ ${k.name}`);
-  } catch (err) {
-    console.error(`  ✗ ${k.name}: ${err.message}`);
   }
+
+  const newHash = bcrypt.hashSync(newPass, 12);
+  db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(newHash, user.id);
+});
+
+try {
+  migrate();
+  console.log('Password changed successfully.');
+} catch (err) {
+  console.error('FAILED — no changes written:', err.message);
+  process.exit(1);
 }
 
-const newHash = bcrypt.hashSync(newPass, 12);
-db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(newHash, user.id);
-
-console.log('Password changed successfully.');
 db.close();
