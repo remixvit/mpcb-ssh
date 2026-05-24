@@ -8,6 +8,9 @@ jobs:
   deploy:
     runs-on: self-hosted
     steps:
+      - name: Fix permissions
+        run: sudo rm -rf $GITHUB_WORKSPACE/data || true
+
       - name: Checkout
         uses: actions/checkout@v4
 
