@@ -4,9 +4,27 @@ import Icon from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtUptime(sec) {
+  if (!sec) return null;
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `up ${d}d ${h}h`;
+  if (h > 0) return `up ${h}h ${m}m`;
+  return `up ${m}m`;
+}
+
+function fmtBps(bps) {
+  if (bps == null) return '—';
+  if (bps < 1024)        return `${bps} B/s`;
+  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+  return `${(bps / 1048576).toFixed(1)} MB/s`;
+}
+
 // ── Meter bar ─────────────────────────────────────────────────────────────────
 function Meter({ label, value, online }) {
-  const pct = online && value != null ? value : 0;
+  const pct   = online && value != null ? value : 0;
   const color = pct > 85 ? '#f07178' : pct > 65 ? '#ffcb6b' : '#c3e88d';
   return (
     <div>
@@ -21,21 +39,12 @@ function Meter({ label, value, online }) {
   );
 }
 
-function fmtUptime(sec) {
-  if (!sec) return null;
-  const d = Math.floor(sec / 86400);
-  const h = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return `up ${d}d ${h}h`;
-  if (h > 0) return `up ${h}h ${m}m`;
-  return `up ${m}m`;
-}
-
 // ── Agent card ────────────────────────────────────────────────────────────────
 function AgentCard({ agent, onDelete }) {
   const ago    = agent.last_seen ? new Date(agent.last_seen * 1000).toLocaleString() : null;
   const uptime = fmtUptime(agent.uptime);
   const hasLoad = agent.load1 != null;
+  const hasNet  = agent.rxBps != null || agent.txBps != null;
 
   return (
     <div className="card" style={{ padding: 16 }}>
@@ -57,17 +66,25 @@ function AgentCard({ agent, onDelete }) {
         <StatusBadge status={agent.online ? 'online' : 'offline'} />
       </div>
 
-      {/* Metrics bars */}
+      {/* Metric bars */}
       {agent.online && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 14 }}>
-          <Meter label="CPU" value={agent.cpu} online={agent.online} />
-          <Meter label="Mem" value={agent.mem} online={agent.online} />
+          <Meter label="CPU"  value={agent.cpu}  online={agent.online} />
+          <Meter label="Mem"  value={agent.mem}  online={agent.online} />
           <Meter label="Disk" value={agent.disk} online={agent.online} />
         </div>
       )}
 
-      {/* Footer row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: 11, color: 'var(--text-faint)' }}>
+      {/* Network row */}
+      {agent.online && hasNet && (
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
+          <span>↓ <span style={{ color: '#c3e88d' }}>{fmtBps(agent.rxBps)}</span></span>
+          <span>↑ <span style={{ color: '#89ddff' }}>{fmtBps(agent.txBps)}</span></span>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12, fontSize: 11, color: 'var(--text-faint)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span>{agent.platform || '—'}</span>
           {agent.online && uptime && <span style={{ color: '#89ddff' }}>{uptime}</span>}
@@ -77,8 +94,8 @@ function AgentCard({ agent, onDelete }) {
             </span>
           )}
         </div>
-        <span style={{ fontFamily: 'var(--font-mono)', textAlign: 'right' }}>
-          {ago ? `${agent.online ? 'seen' : 'last'} ${ago}` : 'Never connected'}
+        <span style={{ fontFamily: 'var(--font-mono)' }}>
+          {ago ? `${agent.online ? 'seen' : 'last'} ${new Date(agent.last_seen * 1000).toLocaleString()}` : 'Never connected'}
         </span>
       </div>
 
@@ -91,94 +108,169 @@ function AgentCard({ agent, onDelete }) {
   );
 }
 
-// ── Token / install modal ─────────────────────────────────────────────────────
+// ── Install / auto-start modal ────────────────────────────────────────────────
+function CmdBlock({ prefix, children, onCopy, copied }) {
+  return (
+    <div style={{ position: 'relative', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-2)' }}>
+      {prefix && <span style={{ color: 'var(--text-faint)', userSelect: 'none' }}>{prefix} </span>}
+      {children}
+      <button className={`btn sm ${copied ? '' : 'ghost'}`} style={{ position: 'absolute', top: 8, right: 8 }} onClick={onCopy}>
+        <Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
 function TokenModal({ open, onClose, agentId, agentName, token }) {
   const [tab,    setTab]    = useState('linux');
-  const [copied, setCopied] = useState(false);
-  const serverUrl = window.location.origin;
+  const [copied, setCopied] = useState('');
+  const srv = window.location.origin;
 
-  const installUrl = `${serverUrl}/api/agents/install?id=${agentId}&token=${encodeURIComponent(token)}&server=${encodeURIComponent(serverUrl)}`;
+  const installUrl = `${srv}/api/agents/install?id=${agentId}&token=${encodeURIComponent(token)}&server=${encodeURIComponent(srv)}`;
 
-  const cmds = {
-    linux: `curl -fsSL '${installUrl}' | sudo bash`,
-    win:   [
-      `cd $env:USERPROFILE`,
-      `mkdir mpcb-agent -ErrorAction SilentlyContinue; cd mpcb-agent`,
-      `Invoke-WebRequest '${serverUrl}/api/agents/download' -OutFile index.js`,
-      `'{"name":"mpcb-agent","main":"index.js","dependencies":{"ws":"^8.18.0"}}' | Out-File package.json -Encoding utf8`,
-      `npm install --omit=dev --quiet`,
-      `$env:MPCB_SERVER='${serverUrl}'; $env:MPCB_ID='${agentId}'; $env:MPCB_TOKEN='${token}'; node index.js`,
-    ].join('\n'),
-  };
-
-  const cmd = cmds[tab];
-
-  function copy() {
-    navigator.clipboard?.writeText(cmd).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+  function copy(key, text) {
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setCopied(key);
+    setTimeout(() => setCopied(''), 1800);
   }
 
-  // Reset copied when switching tabs
-  function switchTab(t) { setTab(t); setCopied(false); }
+  const tabBtn = (id, label) => (
+    <button
+      key={id}
+      onClick={() => { setTab(id); setCopied(''); }}
+      style={{
+        padding: '4px 14px', fontSize: 12, cursor: 'pointer', borderRadius: 4,
+        background: tab === id ? 'var(--bg-3)' : 'transparent',
+        color: tab === id ? 'var(--text)' : 'var(--text-faint)',
+        border: tab === id ? '1px solid var(--border)' : '1px solid transparent',
+      }}
+    >{label}</button>
+  );
 
-  const tabStyle = (t) => ({
-    padding: '4px 14px', fontSize: 12, cursor: 'pointer', borderRadius: 4,
-    background: tab === t ? 'var(--bg-3)' : 'transparent',
-    color: tab === t ? 'var(--text)' : 'var(--text-faint)',
-    border: tab === t ? '1px solid var(--border)' : '1px solid transparent',
-  });
+  // ── Linux content
+  const linuxInstall = `curl -fsSL '${installUrl}' | sudo bash`;
+
+  // ── macOS content
+  const macInstall = [
+    `sudo mkdir -p /opt/mpcb-agent && cd /opt/mpcb-agent`,
+    `sudo curl -fsSL '${srv}/api/agents/download' -o index.js`,
+    `echo '{"name":"mpcb-agent","main":"index.js","dependencies":{"ws":"^8.18.0"}}' | sudo tee package.json`,
+    `sudo npm install --omit=dev --quiet`,
+  ].join('\n');
+  const macPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.mpcb.agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>/opt/mpcb-agent/index.js</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>MPCB_SERVER</key><string>${srv}</string>
+    <key>MPCB_ID</key><string>${agentId}</string>
+    <key>MPCB_TOKEN</key><string>${token}</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/mpcb-agent.log</string>
+  <key>StandardErrorPath</key><string>/tmp/mpcb-agent.log</string>
+</dict></plist>`;
+  const macAutoStart = [
+    `sudo tee /etc/mpcb-agent.plist <<'EOF'\n${macPlist}\nEOF`,
+    `sudo cp /etc/mpcb-agent.plist /Library/LaunchDaemons/com.mpcb.agent.plist`,
+    `sudo launchctl load -w /Library/LaunchDaemons/com.mpcb.agent.plist`,
+  ].join('\n');
+
+  // ── Windows content
+  const winInstall = [
+    `cd $env:USERPROFILE`,
+    `mkdir mpcb-agent -ErrorAction SilentlyContinue; cd mpcb-agent`,
+    `Invoke-WebRequest '${srv}/api/agents/download' -OutFile index.js`,
+    `'{"name":"mpcb-agent","main":"index.js","dependencies":{"ws":"^8.18.0"}}' | Out-File package.json -Encoding utf8`,
+    `npm install --omit=dev --quiet`,
+    `$env:MPCB_SERVER='${srv}'; $env:MPCB_ID='${agentId}'; $env:MPCB_TOKEN='${token}'; node index.js`,
+  ].join('\n');
+  const winAutoStart = [
+    `# Save start script`,
+    `@"`,
+    `@echo off`,
+    `set MPCB_SERVER=${srv}`,
+    `set MPCB_ID=${agentId}`,
+    `set MPCB_TOKEN=${token}`,
+    `node "%USERPROFILE%\\mpcb-agent\\index.js"`,
+    `"@ | Out-File "$env:USERPROFILE\\mpcb-agent\\start.bat" -Encoding ascii`,
+    ``,
+    `# Register Task Scheduler (runs at logon, restarts on failure)`,
+    `$a = New-ScheduledTaskAction -Execute "$env:USERPROFILE\\mpcb-agent\\start.bat"`,
+    `$t = New-ScheduledTaskTrigger -AtLogon`,
+    `$s = New-ScheduledTaskSettingsSet -RestartCount 10 -RestartInterval (New-TimeSpan -Seconds 30)`,
+    `Register-ScheduledTask -TaskName "MPCB Agent" -Action $a -Trigger $t -Settings $s -RunLevel Highest -Force`,
+    `Start-ScheduledTask -TaskName "MPCB Agent"`,
+  ].join('\n');
 
   return (
     <Modal open={open} onClose={onClose} title={`Enroll agent — ${agentName}`} wide
       foot={<button className="btn primary" onClick={onClose}>Done</button>}>
 
       <p style={{ color: 'var(--text-2)', marginBottom: 12, fontSize: 13 }}>
-        Run the following command on the target machine. The token is shown <b>once only</b>.
+        Run the commands on the target machine. Token shown <b>once only</b>.
       </p>
 
       {/* OS tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-        <button style={tabStyle('linux')} onClick={() => switchTab('linux')}>🐧 Linux / macOS</button>
-        <button style={tabStyle('win')}   onClick={() => switchTab('win')}>🪟 Windows (PowerShell)</button>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+        {tabBtn('linux', '🐧 Linux')}
+        {tabBtn('mac',   '🍎 macOS')}
+        {tabBtn('win',   '🪟 Windows')}
       </div>
 
-      {/* Command block */}
-      <div style={{ position: 'relative', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-2)' }}>
-        <span style={{ color: 'var(--text-faint)', userSelect: 'none' }}>{tab === 'win' ? 'PS> ' : '$ '}</span>{cmd}
-        <button
-          className={`btn sm ${copied ? '' : 'ghost'}`}
-          style={{ position: 'absolute', top: 8, right: 8 }}
-          onClick={copy}
-        >
-          <Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-
-      {/* Notes per OS */}
-      {tab === 'linux' && (
-        <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(137,221,255,0.05)', border: '1px solid rgba(137,221,255,0.15)', borderRadius: 6, fontSize: 12, color: 'var(--text-2)' }}>
-          <b style={{ color: '#89ddff' }}>Requirements</b>
-          <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.8 }}>
-            <li>Linux (systemd preferred) or macOS</li>
-            <li>Node.js 16+ — installed automatically on Debian/Ubuntu if missing</li>
-            <li>Root privileges (for systemd service)</li>
-          </ul>
+      {/* ── Linux ── */}
+      {tab === 'linux' && (<>
+        <p style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 8 }}>
+          One-liner — downloads, installs dependencies, creates <b>systemd</b> service automatically.
+        </p>
+        <CmdBlock prefix="$" onCopy={() => copy('linux', linuxInstall)} copied={copied === 'linux'}>
+          {linuxInstall}
+        </CmdBlock>
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-faint)' }}>
+          ✓ Auto-start on boot via systemd is included.<br />
+          Check status: <code>systemctl status mpcb-agent</code> · Logs: <code>journalctl -u mpcb-agent -f</code>
         </div>
-      )}
-      {tab === 'win' && (
-        <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(255,203,107,0.05)', border: '1px solid rgba(255,203,107,0.15)', borderRadius: 6, fontSize: 12, color: 'var(--text-2)' }}>
-          <b style={{ color: '#ffcb6b' }}>Requirements</b>
-          <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.8 }}>
-            <li>Node.js 16+ — <a href="https://nodejs.org" target="_blank" rel="noreferrer" style={{ color: '#89ddff' }}>nodejs.org</a></li>
-            <li>PowerShell 5+ (built into Windows 10/11)</li>
-            <li>Runs in the current terminal — close window to stop</li>
-          </ul>
-        </div>
-      )}
+      </>)}
 
-      <p style={{ marginTop: 12, fontSize: 12, color: 'var(--text-faint)' }}>
-        The agent will appear online within ~30 seconds. Revoke anytime by deleting the agent.
+      {/* ── macOS ── */}
+      {tab === 'mac' && (<>
+        <p style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 6 }}>Step 1 — install:</p>
+        <CmdBlock prefix="$" onCopy={() => copy('mac-install', macInstall)} copied={copied === 'mac-install'}>
+          {macInstall}
+        </CmdBlock>
+        <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '12px 0 6px' }}>Step 2 — auto-start via <b>launchd</b> (runs as daemon, survives reboot):</p>
+        <CmdBlock prefix="$" onCopy={() => copy('mac-auto', macAutoStart)} copied={copied === 'mac-auto'}>
+          {macAutoStart}
+        </CmdBlock>
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-faint)' }}>
+          Logs: <code>tail -f /tmp/mpcb-agent.log</code>
+        </div>
+      </>)}
+
+      {/* ── Windows ── */}
+      {tab === 'win' && (<>
+        <p style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 6 }}>Step 1 — install &amp; test (PowerShell):</p>
+        <CmdBlock prefix="PS>" onCopy={() => copy('win-install', winInstall)} copied={copied === 'win-install'}>
+          {winInstall}
+        </CmdBlock>
+        <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '12px 0 6px' }}>Step 2 — auto-start via <b>Task Scheduler</b> (starts at logon, restarts on crash):</p>
+        <CmdBlock prefix="PS>" onCopy={() => copy('win-auto', winAutoStart)} copied={copied === 'win-auto'}>
+          {winAutoStart}
+        </CmdBlock>
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-faint)' }}>
+          Requires Node.js 16+ · <a href="https://nodejs.org" target="_blank" rel="noreferrer" style={{ color: '#89ddff' }}>nodejs.org</a>
+        </div>
+      </>)}
+
+      <p style={{ marginTop: 14, fontSize: 12, color: 'var(--text-faint)' }}>
+        Agent appears online within ~30 seconds. Revoke anytime by deleting it.
       </p>
     </Modal>
   );
@@ -188,7 +280,7 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
 export default function Agents() {
   const [agents,   setAgents]   = useState([]);
   const [loading,  setLoading]  = useState(true);
-  const [newAgent, setNewAgent] = useState(null); // { id, name, token }
+  const [newAgent, setNewAgent] = useState(null);
 
   const load = useCallback(() =>
     api.get('/agents').then(r => setAgents(r.data)).finally(() => setLoading(false)),
@@ -196,7 +288,6 @@ export default function Agents() {
 
   useEffect(() => {
     load();
-    // Poll for live online/stats status every 10 s
     const t = setInterval(load, 10_000);
     return () => clearInterval(t);
   }, [load]);
@@ -222,9 +313,7 @@ export default function Agents() {
       <div className="page-head">
         <div>
           <div className="page-title">Agents</div>
-          <div className="page-sub">
-            {online} of {agents.length} online · helper daemons on managed machines
-          </div>
+          <div className="page-sub">{online} of {agents.length} online · helper daemons on managed machines</div>
         </div>
         <div style={{ flex: 1 }} />
         <button className="btn primary" onClick={handleAdd}>
@@ -239,7 +328,7 @@ export default function Agents() {
           <Icon name="agent" className="ico" style={{ width: 32, height: 32, opacity: 0.3 }} />
           <div style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 12 }}>No agents registered</div>
           <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-            Add an agent to see real-time CPU/mem from remote machines
+            Add an agent to monitor CPU, RAM, disk and network on remote machines
           </div>
           <button className="btn primary" style={{ marginTop: 20 }} onClick={handleAdd}>
             <Icon name="bolt" /> Add agent

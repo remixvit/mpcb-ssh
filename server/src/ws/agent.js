@@ -35,6 +35,7 @@ async function handleAgentConnection(ws, req) {
     ws, userId: agent.user_id,
     cpu: null, mem: null, disk: null,
     uptime: null, load1: null, load5: null, load15: null,
+    rxBps: null, txBps: null,
   });
   db.prepare('UPDATE agents SET last_seen = unixepoch() WHERE id = ?').run(id);
   console.log(`[agent:ws] ${agent.name} (#${id}) connected`);
@@ -60,6 +61,8 @@ async function handleAgentConnection(ws, req) {
           entry.load1  = msg.load1  ?? null;
           entry.load5  = msg.load5  ?? null;
           entry.load15 = msg.load15 ?? null;
+          entry.rxBps  = msg.rxBps  ?? null;
+          entry.txBps  = msg.txBps  ?? null;
         }
         db.prepare('UPDATE agents SET last_seen=unixepoch() WHERE id=?').run(id);
         break;
@@ -89,6 +92,7 @@ function getStats(agentId) {
     cpu: e.cpu, mem: e.mem, disk: e.disk,
     uptime: e.uptime,
     load1: e.load1, load5: e.load5, load15: e.load15,
+    rxBps: e.rxBps, txBps: e.txBps,
   };
 }
 
