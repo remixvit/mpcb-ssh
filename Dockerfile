@@ -13,6 +13,7 @@ RUN apk add --no-cache python3 make g++
 COPY server/package*.json ./
 RUN npm install --omit=dev
 COPY server/src/ ./src/
+COPY server/change-password.js ./
 COPY --from=frontend /client/dist ./client/dist
 COPY agent/ ./agent/
 RUN mkdir -p data
