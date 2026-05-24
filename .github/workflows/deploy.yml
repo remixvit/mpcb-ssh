@@ -16,7 +16,7 @@ jobs:
 
       - name: Build & restart
         run: |
-          docker compose --env-file ~/.mpcb-ssh.env build --no-cache
+          docker compose --env-file ~/.mpcb-ssh.env build
           docker compose --env-file ~/.mpcb-ssh.env up -d
           docker image prune -f
 
