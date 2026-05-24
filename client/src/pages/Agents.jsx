@@ -71,10 +71,25 @@ function AgentCard({ agent, onDelete }) {
 
 // ── Token / install modal ─────────────────────────────────────────────────────
 function TokenModal({ open, onClose, agentId, agentName, token }) {
+  const [tab,    setTab]    = useState('linux');
   const [copied, setCopied] = useState(false);
   const serverUrl = window.location.origin;
+
   const installUrl = `${serverUrl}/api/agents/install?id=${agentId}&token=${encodeURIComponent(token)}&server=${encodeURIComponent(serverUrl)}`;
-  const cmd = `curl -fsSL '${installUrl}' | sudo bash`;
+
+  const cmds = {
+    linux: `curl -fsSL '${installUrl}' | sudo bash`,
+    win:   [
+      `cd $env:USERPROFILE`,
+      `mkdir mpcb-agent -ErrorAction SilentlyContinue; cd mpcb-agent`,
+      `Invoke-WebRequest '${serverUrl}/api/agents/download' -OutFile index.js`,
+      `'{"name":"mpcb-agent","main":"index.js","dependencies":{"ws":"^8.18.0"}}' | Out-File package.json -Encoding utf8`,
+      `npm install --omit=dev --quiet`,
+      `$env:MPCB_SERVER='${serverUrl}'; $env:MPCB_ID='${agentId}'; $env:MPCB_TOKEN='${token}'; node index.js`,
+    ].join('\n'),
+  };
+
+  const cmd = cmds[tab];
 
   function copy() {
     navigator.clipboard?.writeText(cmd).catch(() => {});
@@ -82,18 +97,33 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
     setTimeout(() => setCopied(false), 1800);
   }
 
+  // Reset copied when switching tabs
+  function switchTab(t) { setTab(t); setCopied(false); }
+
+  const tabStyle = (t) => ({
+    padding: '4px 14px', fontSize: 12, cursor: 'pointer', borderRadius: 4,
+    background: tab === t ? 'var(--bg-3)' : 'transparent',
+    color: tab === t ? 'var(--text)' : 'var(--text-faint)',
+    border: tab === t ? '1px solid var(--border)' : '1px solid transparent',
+  });
+
   return (
     <Modal open={open} onClose={onClose} title={`Enroll agent — ${agentName}`} wide
       foot={<button className="btn primary" onClick={onClose}>Done</button>}>
 
-      <p style={{ color: 'var(--text-2)', marginBottom: 14, fontSize: 13 }}>
+      <p style={{ color: 'var(--text-2)', marginBottom: 12, fontSize: 13 }}>
         Run the following command on the target machine. The token is shown <b>once only</b>.
       </p>
 
-      {/* Install command */}
-      <div style={{ position: 'relative', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, wordBreak: 'break-all', color: 'var(--text-2)' }}>
-        <span style={{ color: 'var(--text-faint)', userSelect: 'none' }}>$ </span>
-        {cmd}
+      {/* OS tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+        <button style={tabStyle('linux')} onClick={() => switchTab('linux')}>🐧 Linux / macOS</button>
+        <button style={tabStyle('win')}   onClick={() => switchTab('win')}>🪟 Windows (PowerShell)</button>
+      </div>
+
+      {/* Command block */}
+      <div style={{ position: 'relative', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-2)' }}>
+        <span style={{ color: 'var(--text-faint)', userSelect: 'none' }}>{tab === 'win' ? 'PS> ' : '$ '}</span>{cmd}
         <button
           className={`btn sm ${copied ? '' : 'ghost'}`}
           style={{ position: 'absolute', top: 8, right: 8 }}
@@ -103,19 +133,30 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
         </button>
       </div>
 
-      {/* Requirements */}
-      <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(137,221,255,0.05)', border: '1px solid rgba(137,221,255,0.15)', borderRadius: 6, fontSize: 12, color: 'var(--text-2)' }}>
-        <b style={{ color: '#89ddff' }}>Requirements</b>
-        <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
-          <li>Linux (systemd preferred) or macOS</li>
-          <li>Node.js 16+ — installed automatically on Debian/Ubuntu if missing</li>
-          <li>Root privileges (for systemd service)</li>
-        </ul>
-      </div>
+      {/* Notes per OS */}
+      {tab === 'linux' && (
+        <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(137,221,255,0.05)', border: '1px solid rgba(137,221,255,0.15)', borderRadius: 6, fontSize: 12, color: 'var(--text-2)' }}>
+          <b style={{ color: '#89ddff' }}>Requirements</b>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.8 }}>
+            <li>Linux (systemd preferred) or macOS</li>
+            <li>Node.js 16+ — installed automatically on Debian/Ubuntu if missing</li>
+            <li>Root privileges (for systemd service)</li>
+          </ul>
+        </div>
+      )}
+      {tab === 'win' && (
+        <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(255,203,107,0.05)', border: '1px solid rgba(255,203,107,0.15)', borderRadius: 6, fontSize: 12, color: 'var(--text-2)' }}>
+          <b style={{ color: '#ffcb6b' }}>Requirements</b>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.8 }}>
+            <li>Node.js 16+ — <a href="https://nodejs.org" target="_blank" rel="noreferrer" style={{ color: '#89ddff' }}>nodejs.org</a></li>
+            <li>PowerShell 5+ (built into Windows 10/11)</li>
+            <li>Runs in the current terminal — close window to stop</li>
+          </ul>
+        </div>
+      )}
 
       <p style={{ marginTop: 12, fontSize: 12, color: 'var(--text-faint)' }}>
-        The agent will appear online here within ~30 seconds of a successful install.
-        You can revoke access at any time by deleting the agent.
+        The agent will appear online within ~30 seconds. Revoke anytime by deleting the agent.
       </p>
     </Modal>
   );
