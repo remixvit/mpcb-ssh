@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { getDb } = require('../db/schema');
 const { authenticate } = require('../middleware/auth');
 const { encrypt } = require('../services/crypto');
+const { ppkToOpenSSH } = require('../services/ppkToOpenSSH');
 
 const router = express.Router();
 router.use(authenticate);
@@ -20,11 +21,21 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'name, pem and encryptionKey are required' });
   }
 
+  // Auto-convert PuTTY PPK format to OpenSSH
+  let keyPem = pem;
+  if (pem.startsWith('PuTTY-User-Key-File')) {
+    try {
+      keyPem = ppkToOpenSSH(pem);
+    } catch (err) {
+      return res.status(400).json({ error: `PPK conversion failed: ${err.message}` });
+    }
+  }
+
   let publicKey = null;
   let fingerprint = null;
 
   try {
-    const keyObj = crypto.createPublicKey({ key: pem, format: 'pem' });
+    const keyObj = crypto.createPublicKey({ key: keyPem, format: 'pem' });
     publicKey = keyObj.export({ type: 'spki', format: 'pem' });
     const der = keyObj.export({ type: 'spki', format: 'der' });
     fingerprint = crypto.createHash('sha256').update(der).digest('base64');
@@ -33,7 +44,7 @@ router.post('/', (req, res) => {
   }
 
   const keyBuffer = Buffer.from(encryptionKey, 'base64');
-  const { encrypted, iv, authTag } = encrypt(pem, keyBuffer);
+  const { encrypted, iv, authTag } = encrypt(keyPem, keyBuffer);
 
   const result = getDb().prepare(`
     INSERT INTO ssh_keys (user_id, name, encrypted_pem, iv, auth_tag, public_key, fingerprint)
