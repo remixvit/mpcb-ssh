@@ -42,11 +42,11 @@ const ICONS = {
   doc: <><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v6h6"/></>,
 };
 
-export default function Icon({ name, className = 'ico', style }) {
+export default function Icon({ name, className = 'ico', style, ...rest }) {
   const paths = ICONS[name];
   if (!paths) return null;
   return (
-    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg className={className} style={style} {...rest} viewBox="0 0 24 24" fill="none" stroke="currentColor"
          strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       {paths}
     </svg>

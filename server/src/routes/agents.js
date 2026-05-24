@@ -13,7 +13,7 @@ const router = express.Router();
 // ── Public: download agent script ────────────────────────────────────────────
 // (No auth — the agent token IS the credential)
 router.get('/download', (_req, res) => {
-  const agentPath = path.resolve(__dirname, '../../../agent/index.js');
+  const agentPath = path.resolve(__dirname, '../../agent/index.js');
   if (!fs.existsSync(agentPath)) return res.status(404).send('Agent script not found on server');
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="mpcb-agent.js"');
