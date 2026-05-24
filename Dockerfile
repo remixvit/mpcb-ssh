@@ -9,6 +9,7 @@ RUN npm run build
 # Stage 2 — production server
 FROM node:20-alpine
 WORKDIR /app
+RUN apk add --no-cache python3 make g++
 COPY server/package*.json ./
 RUN npm install --omit=dev
 COPY server/src/ ./src/
