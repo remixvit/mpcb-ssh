@@ -28,8 +28,8 @@ export default function KeyUpload() {
     e.preventDefault();
     setError('');
 
-    if (!form.pem.includes('PRIVATE KEY')) {
-      setError('File does not look like a private key (missing "PRIVATE KEY" header)');
+    if (!form.pem.includes('PRIVATE KEY') && !form.pem.startsWith('PuTTY-User-Key-File')) {
+      setError('File does not look like a private key (expected OpenSSH PEM or PuTTY .ppk format)');
       return;
     }
 
