@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuthStore } from './store/auth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -15,8 +16,18 @@ import Bluetooth from './pages/Bluetooth';
 import IoT from './pages/IoT';
 
 function PrivateRoute({ children }) {
-  const token = useAuthStore(s => s.token);
-  return token ? children : <Navigate to="/login" replace />;
+  const { token, logout } = useAuthStore();
+
+  // JWT lives in localStorage (persists across browser restarts) but
+  // decryptionKey is in sessionStorage (cleared when all tabs close).
+  // When they go out of sync, force re-login so the key gets re-derived.
+  useEffect(() => {
+    if (token && !sessionStorage.getItem('decryptionKey')) logout();
+  }, [token, logout]);
+
+  if (!token) return <Navigate to="/login" replace />;
+  if (!sessionStorage.getItem('decryptionKey')) return <Navigate to="/login" replace />;
+  return children;
 }
 
 export default function App() {

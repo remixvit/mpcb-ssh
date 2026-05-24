@@ -111,12 +111,18 @@ function AgentCard({ agent, onDelete }) {
 // ── Install / auto-start modal ────────────────────────────────────────────────
 function CmdBlock({ prefix, children, onCopy, copied }) {
   return (
-    <div style={{ position: 'relative', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-2)' }}>
-      {prefix && <span style={{ color: 'var(--text-faint)', userSelect: 'none' }}>{prefix} </span>}
-      {children}
-      <button className={`btn sm ${copied ? '' : 'ghost'}`} style={{ position: 'absolute', top: 8, right: 8 }} onClick={onCopy}>
-        <Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}
-      </button>
+    <div style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+      {/* Header row with copy button always visible */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px 4px 12px', borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.15)' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-faint)', userSelect: 'none', fontFamily: 'var(--font-mono)' }}>{prefix || '$'}</span>
+        <button className={`btn sm ${copied ? '' : 'ghost'}`} style={{ padding: '2px 8px' }} onClick={onCopy}>
+          <Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      {/* Code content */}
+      <div style={{ padding: '10px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-2)' }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -233,9 +239,16 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
         <CmdBlock prefix="$" onCopy={() => copy('linux', linuxInstall)} copied={copied === 'linux'}>
           {linuxInstall}
         </CmdBlock>
-        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-faint)' }}>
-          ✓ Auto-start on boot via systemd is included.<br />
-          Check status: <code>systemctl status mpcb-agent</code> · Logs: <code>journalctl -u mpcb-agent -f</code>
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-faint)', marginBottom: 8 }}>
+          ✓ Auto-start on boot via systemd is included.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <CmdBlock prefix="$" onCopy={() => copy('linux-status', 'systemctl status mpcb-agent')} copied={copied === 'linux-status'}>
+            systemctl status mpcb-agent
+          </CmdBlock>
+          <CmdBlock prefix="$" onCopy={() => copy('linux-logs', 'journalctl -u mpcb-agent -f')} copied={copied === 'linux-logs'}>
+            journalctl -u mpcb-agent -f
+          </CmdBlock>
         </div>
       </>)}
 
