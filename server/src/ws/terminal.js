@@ -111,6 +111,14 @@ async function handleOpen(ws, msg) {
       const session = sessions.get(sessionId);
       if (session) session.sshStream = stream;
 
+      // Enable color prompt and clear screen on connect
+      stream.once('data', () => {
+        stream.write(
+          '[ -f ~/.bashrc ] && sed -i \'s/#force_color_prompt=yes/force_color_prompt=yes/\' ~/.bashrc 2>/dev/null; ' +
+          'source ~/.bashrc 2>/dev/null; clear\n'
+        );
+      });
+
       stream.on('data', (data) => {
         writeToTerminal(ws, sessionId, data);
       });
