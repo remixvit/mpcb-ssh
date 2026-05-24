@@ -21,14 +21,25 @@ function Meter({ label, value, online }) {
   );
 }
 
+function fmtUptime(sec) {
+  if (!sec) return null;
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `up ${d}d ${h}h`;
+  if (h > 0) return `up ${h}h ${m}m`;
+  return `up ${m}m`;
+}
+
 // ── Agent card ────────────────────────────────────────────────────────────────
 function AgentCard({ agent, onDelete }) {
-  const ago = agent.last_seen
-    ? new Date(agent.last_seen * 1000).toLocaleString()
-    : 'Never connected';
+  const ago    = agent.last_seen ? new Date(agent.last_seen * 1000).toLocaleString() : null;
+  const uptime = fmtUptime(agent.uptime);
+  const hasLoad = agent.load1 != null;
 
   return (
     <div className="card" style={{ padding: 16 }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div className="tile-ico" style={{
           width: 36, height: 36,
@@ -37,27 +48,38 @@ function AgentCard({ agent, onDelete }) {
         }}>
           <Icon name="cpu" style={{ color: agent.online ? '#c3e88d' : 'var(--text-faint)' }} />
         </div>
-
         <div style={{ flex: 1, minWidth: 0 }}>
           <b style={{ fontSize: 14 }}>{agent.name}</b>
           <div style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-            {agent.hostname || 'Never connected'}
+            {agent.hostname || '—'}
           </div>
         </div>
-
         <StatusBadge status={agent.online ? 'online' : 'offline'} />
       </div>
 
+      {/* Metrics bars */}
       {agent.online && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 14 }}>
           <Meter label="CPU" value={agent.cpu} online={agent.online} />
           <Meter label="Mem" value={agent.mem} online={agent.online} />
+          <Meter label="Disk" value={agent.disk} online={agent.online} />
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 11, color: 'var(--text-faint)' }}>
-        <span>{agent.platform || '—'}</span>
-        <span style={{ fontFamily: 'var(--font-mono)' }}>{ago}</span>
+      {/* Footer row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: 11, color: 'var(--text-faint)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span>{agent.platform || '—'}</span>
+          {agent.online && uptime && <span style={{ color: '#89ddff' }}>{uptime}</span>}
+          {agent.online && hasLoad && (
+            <span style={{ fontFamily: 'var(--font-mono)' }}>
+              load {agent.load1} {agent.load5} {agent.load15}
+            </span>
+          )}
+        </div>
+        <span style={{ fontFamily: 'var(--font-mono)', textAlign: 'right' }}>
+          {ago ? `${agent.online ? 'seen' : 'last'} ${ago}` : 'Never connected'}
+        </span>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginTop: 12, justifyContent: 'flex-end' }}>

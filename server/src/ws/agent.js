@@ -2,7 +2,7 @@
 const bcrypt    = require('bcrypt');
 const { getDb } = require('../db/schema');
 
-// agentId (number) → { ws, userId, cpu, mem }
+// agentId (number) → { ws, userId, cpu, mem, disk, uptime, load1, load5, load15 }
 const connected = new Map();
 
 async function handleAgentConnection(ws, req) {
@@ -31,7 +31,11 @@ async function handleAgentConnection(ws, req) {
   }
 
   // Register as online
-  connected.set(id, { ws, userId: agent.user_id, cpu: null, mem: null });
+  connected.set(id, {
+    ws, userId: agent.user_id,
+    cpu: null, mem: null, disk: null,
+    uptime: null, load1: null, load5: null, load15: null,
+  });
   db.prepare('UPDATE agents SET last_seen = unixepoch() WHERE id = ?').run(id);
   console.log(`[agent:ws] ${agent.name} (#${id}) connected`);
 
@@ -49,8 +53,13 @@ async function handleAgentConnection(ws, req) {
       case 'agent:pong': {
         const entry = connected.get(id);
         if (entry) {
-          entry.cpu = msg.cpu ?? null;
-          entry.mem = msg.mem ?? null;
+          entry.cpu    = msg.cpu    ?? null;
+          entry.mem    = msg.mem    ?? null;
+          entry.disk   = msg.disk   ?? null;
+          entry.uptime = msg.uptime ?? null;
+          entry.load1  = msg.load1  ?? null;
+          entry.load5  = msg.load5  ?? null;
+          entry.load15 = msg.load15 ?? null;
         }
         db.prepare('UPDATE agents SET last_seen=unixepoch() WHERE id=?').run(id);
         break;
@@ -72,10 +81,15 @@ function isOnline(agentId) {
   return !!(e && e.ws.readyState === 1 /* WebSocket.OPEN */);
 }
 
-/** Returns { cpu, mem } for a connected agent, or {} */
+/** Returns stats for a connected agent, or {} */
 function getStats(agentId) {
   const e = connected.get(agentId);
-  return e ? { cpu: e.cpu, mem: e.mem } : {};
+  if (!e) return {};
+  return {
+    cpu: e.cpu, mem: e.mem, disk: e.disk,
+    uptime: e.uptime,
+    load1: e.load1, load5: e.load5, load15: e.load15,
+  };
 }
 
 module.exports = { handleAgentConnection, isOnline, getStats };
