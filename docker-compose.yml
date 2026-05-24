@@ -1,6 +1,6 @@
 services:
   mpcb-ssh:
-    build: ./server
+    build: .
     ports:
       - "8882:3000"
     volumes:
