@@ -13,14 +13,14 @@ router.get('/', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, host, port = 22, username, key_id, tags, color, jump_server_id } = req.body;
+  const { name, host, port = 22, username, key_id, tags, color, jump_server_id, proxy_agent_id } = req.body;
   if (!name || !host || !username) {
     return res.status(400).json({ error: 'name, host and username are required' });
   }
   const result = getDb().prepare(`
-    INSERT INTO servers (user_id, name, host, port, username, key_id, tags, color, jump_server_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.user.id, name, host, port, username, key_id || null, JSON.stringify(tags || []), color || null, jump_server_id || null);
+    INSERT INTO servers (user_id, name, host, port, username, key_id, tags, color, jump_server_id, proxy_agent_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, name, host, port, username, key_id || null, JSON.stringify(tags || []), color || null, jump_server_id || null, proxy_agent_id || null);
 
   res.status(201).json({ id: result.lastInsertRowid });
 });
@@ -38,11 +38,11 @@ router.put('/:id', (req, res) => {
   const server = db.prepare('SELECT id FROM servers WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!server) return res.status(404).json({ error: 'Not found' });
 
-  const { name, host, port, username, key_id, tags, color, jump_server_id } = req.body;
+  const { name, host, port, username, key_id, tags, color, jump_server_id, proxy_agent_id } = req.body;
   db.prepare(`
-    UPDATE servers SET name=?, host=?, port=?, username=?, key_id=?, tags=?, color=?, jump_server_id=?
+    UPDATE servers SET name=?, host=?, port=?, username=?, key_id=?, tags=?, color=?, jump_server_id=?, proxy_agent_id=?
     WHERE id=?
-  `).run(name, host, port, username, key_id || null, JSON.stringify(tags || []), color || null, jump_server_id || null, req.params.id);
+  `).run(name, host, port, username, key_id || null, JSON.stringify(tags || []), color || null, jump_server_id || null, proxy_agent_id || null, req.params.id);
 
   res.json({ ok: true });
 });

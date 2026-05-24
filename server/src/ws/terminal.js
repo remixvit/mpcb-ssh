@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { Client } = require('ssh2');
 const { getDb } = require('../db/schema');
 const { decrypt } = require('../services/crypto');
+const { createProxyStream } = require('./agent');
 
 // sessionId → { ws, sshConn, sshStream, userId }
 const sessions = new Map();
@@ -144,8 +145,16 @@ async function handleOpen(ws, msg) {
     sessions.delete(sessionId);
   });
 
-  // Handle jump server (ProxyJump)
-  if (server.jump_server_id) {
+  // Route connection: agent proxy → jump server → direct
+  if (server.proxy_agent_id) {
+    try {
+      const sock = await createProxyStream(server.proxy_agent_id, server.host, server.port || 22);
+      conn.connect({ ...connConfig, sock });
+    } catch (err) {
+      writeToTerminal(ws, sessionId, `\x1b[31mAgent proxy error: ${err.message}\x1b[0m\r\n`);
+      sessions.delete(sessionId);
+    }
+  } else if (server.jump_server_id) {
     setupJumpConnection(conn, connConfig, server, user.id, msg.decryptionKey, ws, sessionId, db);
   } else {
     conn.connect(connConfig);

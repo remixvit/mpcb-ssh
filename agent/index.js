@@ -2,6 +2,7 @@
 'use strict';
 
 const WebSocket    = require('ws');
+const net          = require('net');
 const os           = require('os');
 const fs           = require('fs');
 const { execSync } = require('child_process');
@@ -16,7 +17,7 @@ const SERVER_URL = process.env.MPCB_SERVER || flag('server') || '';
 const AGENT_ID   = process.env.MPCB_ID     || flag('id')     || '';
 const TOKEN      = process.env.MPCB_TOKEN  || flag('token')  || '';
 const NAME       = process.env.MPCB_NAME   || flag('name')   || os.hostname();
-const VERSION    = '1.2.0';
+const VERSION    = '1.3.0';
 
 if (!SERVER_URL || !AGENT_ID || !TOKEN) {
   console.error(
@@ -61,7 +62,7 @@ function readRawNet() {
         const p = line.trim().split(/\s+/);
         if (p.length < 10) continue;
         const iface = p[0].replace(':', '');
-        if (iface === 'lo') continue; // skip loopback
+        if (iface === 'lo') continue;
         rx += parseInt(p[1])  || 0;
         tx += parseInt(p[9])  || 0;
       }
@@ -110,7 +111,7 @@ function getStats() {
   const cpu      = Math.min(100, Math.round((loadavg[0] / cores) * 100));
   const disk     = getDiskPct();
   const uptime   = Math.round(os.uptime());
-  const hasLoad  = loadavg[0] > 0 || loadavg[1] > 0; // always 0 on Windows
+  const hasLoad  = loadavg[0] > 0 || loadavg[1] > 0;
   const net      = getNetStats();
   return {
     cpu, mem, disk, uptime,
@@ -120,6 +121,38 @@ function getStats() {
     rxBps:  net?.rxBps ?? null,
     txBps:  net?.txBps ?? null,
   };
+}
+
+// ── TCP proxy connections ─────────────────────────────────────────────────────
+const proxyConns = new Map(); // connId → net.Socket
+
+function handleProxyConnect(ws, msg) {
+  const sock = net.createConnection({ host: msg.host, port: msg.port });
+  proxyConns.set(msg.id, sock);
+
+  sock.on('connect', () => {
+    ws.send(JSON.stringify({ type: 'proxy:connected', id: msg.id }));
+  });
+
+  sock.on('data', data => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'proxy:data', id: msg.id, data: data.toString('base64') }));
+    }
+  });
+
+  sock.on('close', () => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'proxy:close', id: msg.id }));
+    }
+    proxyConns.delete(msg.id);
+  });
+
+  sock.on('error', err => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'proxy:error', id: msg.id, error: err.message }));
+    }
+    proxyConns.delete(msg.id);
+  });
 }
 
 // ── WebSocket connection ──────────────────────────────────────────────────────
@@ -152,7 +185,6 @@ function connect() {
       version:  VERSION,
     }));
 
-    // Seed net baseline so first ping has a valid delta
     readRawNet();
     _prevNetTs = Date.now();
 
@@ -165,14 +197,37 @@ function connect() {
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
-    if (msg.type === 'server:ping') {
-      ws.send(JSON.stringify({ type: 'agent:pong', ...getStats() }));
+
+    switch (msg.type) {
+      case 'server:ping':
+        ws.send(JSON.stringify({ type: 'agent:pong', ...getStats() }));
+        break;
+
+      case 'proxy:connect':
+        handleProxyConnect(ws, msg);
+        break;
+
+      case 'proxy:data': {
+        const sock = proxyConns.get(msg.id);
+        if (sock) sock.write(Buffer.from(msg.data, 'base64'));
+        break;
+      }
+
+      case 'proxy:close': {
+        const sock = proxyConns.get(msg.id);
+        if (sock) sock.destroy();
+        proxyConns.delete(msg.id);
+        break;
+      }
     }
   });
 
   ws.on('close', (code) => {
     clearInterval(pingTimer);
     pingTimer = null;
+    // Clean up any open proxy connections
+    for (const sock of proxyConns.values()) sock.destroy();
+    proxyConns.clear();
     const delay = reconnectDelay;
     reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
     console.log(`[mpcb-agent] Disconnected (${code}). Reconnecting in ${delay / 1000}s…`);

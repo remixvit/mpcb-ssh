@@ -1,8 +1,10 @@
 'use strict';
+const { Duplex }  = require('stream');
+const { randomUUID } = require('crypto');
 const bcrypt    = require('bcrypt');
 const { getDb } = require('../db/schema');
 
-// agentId (number) → { ws, userId, cpu, mem, disk, uptime, load1, load5, load15 }
+// agentId → { ws, userId, cpu, mem, disk, uptime, load1, load5, load15, rxBps, txBps, proxies, pending }
 const connected = new Map();
 
 async function handleAgentConnection(ws, req) {
@@ -22,7 +24,6 @@ async function handleAgentConnection(ws, req) {
     return;
   }
 
-  // Verify token against stored bcrypt hash
   let valid = false;
   try { valid = await bcrypt.compare(token, agent.token_hash); } catch {}
   if (!valid) {
@@ -30,12 +31,13 @@ async function handleAgentConnection(ws, req) {
     return;
   }
 
-  // Register as online
   connected.set(id, {
     ws, userId: agent.user_id,
     cpu: null, mem: null, disk: null,
     uptime: null, load1: null, load5: null, load15: null,
     rxBps: null, txBps: null,
+    proxies: new Map(), // connId → Duplex stream
+    pending: new Map(), // connId → { resolve, reject }
   });
   db.prepare('UPDATE agents SET last_seen = unixepoch() WHERE id = ?').run(id);
   console.log(`[agent:ws] ${agent.name} (#${id}) connected`);
@@ -44,6 +46,9 @@ async function handleAgentConnection(ws, req) {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
+    const entry = connected.get(id);
+    if (!entry) return;
+
     switch (msg.type) {
       case 'agent:hello':
         db.prepare('UPDATE agents SET hostname=?, platform=?, last_seen=unixepoch() WHERE id=?')
@@ -51,40 +56,65 @@ async function handleAgentConnection(ws, req) {
         break;
 
       case 'agent:ping':
-      case 'agent:pong': {
-        const entry = connected.get(id);
-        if (entry) {
-          entry.cpu    = msg.cpu    ?? null;
-          entry.mem    = msg.mem    ?? null;
-          entry.disk   = msg.disk   ?? null;
-          entry.uptime = msg.uptime ?? null;
-          entry.load1  = msg.load1  ?? null;
-          entry.load5  = msg.load5  ?? null;
-          entry.load15 = msg.load15 ?? null;
-          entry.rxBps  = msg.rxBps  ?? null;
-          entry.txBps  = msg.txBps  ?? null;
-        }
+      case 'agent:pong':
+        entry.cpu    = msg.cpu    ?? null;
+        entry.mem    = msg.mem    ?? null;
+        entry.disk   = msg.disk   ?? null;
+        entry.uptime = msg.uptime ?? null;
+        entry.load1  = msg.load1  ?? null;
+        entry.load5  = msg.load5  ?? null;
+        entry.load15 = msg.load15 ?? null;
+        entry.rxBps  = msg.rxBps  ?? null;
+        entry.txBps  = msg.txBps  ?? null;
         db.prepare('UPDATE agents SET last_seen=unixepoch() WHERE id=?').run(id);
+        break;
+
+      // ── Proxy responses from agent ──────────────────────────────────────────
+      case 'proxy:connected': {
+        const cb = entry.pending.get(msg.id);
+        if (cb) { cb.resolve(); entry.pending.delete(msg.id); }
+        break;
+      }
+
+      case 'proxy:error': {
+        const cb = entry.pending.get(msg.id);
+        if (cb) { cb.reject(new Error(msg.error)); entry.pending.delete(msg.id); }
+        const stream = entry.proxies.get(msg.id);
+        if (stream) { stream.destroy(new Error(msg.error)); entry.proxies.delete(msg.id); }
+        break;
+      }
+
+      case 'proxy:data': {
+        entry.proxies.get(msg.id)?.push(Buffer.from(msg.data, 'base64'));
+        break;
+      }
+
+      case 'proxy:close': {
+        const stream = entry.proxies.get(msg.id);
+        if (stream) { stream.push(null); entry.proxies.delete(msg.id); }
         break;
       }
     }
   });
 
   ws.on('close', () => {
+    const entry = connected.get(id);
+    if (entry) {
+      for (const stream of entry.proxies.values()) stream.destroy();
+      for (const cb of entry.pending.values()) cb.reject(new Error('Agent disconnected'));
+    }
     connected.delete(id);
     console.log(`[agent:ws] ${agent.name} (#${id}) disconnected`);
   });
 
-  ws.on('error', () => {}); // errors also trigger close
+  ws.on('error', () => {});
 }
 
-/** Returns true if agent is currently connected */
 function isOnline(agentId) {
   const e = connected.get(agentId);
-  return !!(e && e.ws.readyState === 1 /* WebSocket.OPEN */);
+  return !!(e && e.ws.readyState === 1);
 }
 
-/** Returns stats for a connected agent, or {} */
 function getStats(agentId) {
   const e = connected.get(agentId);
   if (!e) return {};
@@ -96,4 +126,59 @@ function getStats(agentId) {
   };
 }
 
-module.exports = { handleAgentConnection, isOnline, getStats };
+/**
+ * Opens a proxied TCP connection through an online agent.
+ * Returns a Duplex stream usable as ssh2's `sock` option.
+ */
+function createProxyStream(agentId, host, port) {
+  return new Promise((resolve, reject) => {
+    const entry = connected.get(agentId);
+    if (!entry || entry.ws.readyState !== 1) {
+      return reject(new Error('Agent is offline'));
+    }
+
+    const connId = randomUUID();
+
+    const stream = new Duplex({
+      read() {},
+      write(chunk, _enc, cb) {
+        if (entry.ws.readyState === 1) {
+          entry.ws.send(JSON.stringify({
+            type: 'proxy:data', id: connId,
+            data: chunk.toString('base64'),
+          }));
+        }
+        cb();
+      },
+      final(cb) {
+        if (entry.ws.readyState === 1) {
+          entry.ws.send(JSON.stringify({ type: 'proxy:close', id: connId }));
+        }
+        entry.proxies.delete(connId);
+        cb();
+      },
+    });
+
+    stream.on('error', () => entry.proxies.delete(connId));
+
+    entry.pending.set(connId, {
+      resolve: () => {
+        entry.proxies.set(connId, stream);
+        resolve(stream);
+      },
+      reject: (err) => reject(err),
+    });
+
+    // Timeout if agent doesn't respond
+    setTimeout(() => {
+      if (entry.pending.has(connId)) {
+        entry.pending.delete(connId);
+        reject(new Error('Agent proxy connect timeout'));
+      }
+    }, 10_000);
+
+    entry.ws.send(JSON.stringify({ type: 'proxy:connect', id: connId, host, port }));
+  });
+}
+
+module.exports = { handleAgentConnection, isOnline, getStats, createProxyStream };

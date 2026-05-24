@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
 import Icon, { LABEL_COLORS } from '../components/Icon';
 
-const EMPTY = { name: '', host: '', port: '22', username: 'root', key_id: '', password: '', tags: '', color: '', jump_server_id: '' };
+const EMPTY = { name: '', host: '', port: '22', username: 'root', key_id: '', password: '', tags: '', color: '', jump_server_id: '', proxy_agent_id: '' };
 
 export default function ServerForm() {
   const { id } = useParams();
@@ -13,6 +13,7 @@ export default function ServerForm() {
   const [form, setForm] = useState(EMPTY);
   const [keys, setKeys] = useState([]);
   const [servers, setServers] = useState([]);
+  const [agents, setAgents] = useState([]);
   const [authMode, setAuthMode] = useState('key');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -20,6 +21,7 @@ export default function ServerForm() {
   useEffect(() => {
     api.get('/keys').then(r => setKeys(r.data));
     api.get('/servers').then(r => setServers(r.data.filter(s => !isEdit || String(s.id) !== id)));
+    api.get('/agents').then(r => setAgents(r.data));
 
     if (isEdit) {
       api.get(`/servers/${id}`).then(r => {
@@ -34,6 +36,7 @@ export default function ServerForm() {
           tags: (s.tags || []).join(', '),
           color: s.color || '',
           jump_server_id: s.jump_server_id ? String(s.jump_server_id) : '',
+          proxy_agent_id: s.proxy_agent_id ? String(s.proxy_agent_id) : '',
         });
         setAuthMode(s.key_id ? 'key' : 'password');
       });
@@ -59,6 +62,7 @@ export default function ServerForm() {
       tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
       color: form.color || null,
       jump_server_id: form.jump_server_id ? parseInt(form.jump_server_id) : null,
+      proxy_agent_id: form.proxy_agent_id ? parseInt(form.proxy_agent_id) : null,
     };
 
     if (authMode === 'password' && form.password) {
@@ -146,8 +150,20 @@ export default function ServerForm() {
         </div>
 
         <div className="field">
+          <label>Proxy via Agent <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--text-faint)' }}>(route SSH through agent — optional)</span></label>
+          <select className="select" value={form.proxy_agent_id} onChange={e => { set('proxy_agent_id', e.target.value); if (e.target.value) set('jump_server_id', ''); }}>
+            <option value="">— None —</option>
+            {agents.map(a => (
+              <option key={a.id} value={a.id} disabled={!a.online}>
+                {a.name} {a.online ? '● online' : '○ offline'}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
           <label>Jump server <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--text-faint)' }}>(ProxyJump — optional)</span></label>
-          <select className="select" value={form.jump_server_id} onChange={e => set('jump_server_id', e.target.value)}>
+          <select className="select" value={form.jump_server_id} onChange={e => { set('jump_server_id', e.target.value); if (e.target.value) set('proxy_agent_id', ''); }}>
             <option value="">— None —</option>
             {servers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.host})</option>)}
           </select>
