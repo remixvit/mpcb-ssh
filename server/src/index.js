@@ -30,6 +30,9 @@ app.use(cors({
 app.use(cookieParser());
 app.use(express.json());
 
+// Health check
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 // REST API
 app.use('/api/auth', authRouter);
 app.use('/api/servers', serversRouter);
