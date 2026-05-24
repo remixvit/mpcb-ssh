@@ -1,6 +1,26 @@
 import { useState, useRef } from 'react';
 import Icon from '../components/Icon';
 
+// Common BLE service UUIDs — covers most devices without knowing specifics upfront
+const COMMON_SERVICES = [
+  'generic_access', 'generic_attribute', 'device_information', 'battery_service',
+  'heart_rate', 'health_thermometer', 'human_interface_device', 'current_time',
+  'environmental_sensing', 'fitness_machine', 'cycling_power',
+  'running_speed_and_cadence', 'cycling_speed_and_cadence',
+  // HM-10, HC-08, AT-09 (very common in IoT/Arduino)
+  '0000ffe0-0000-1000-8000-00805f9b34fb',
+  '0000ffe1-0000-1000-8000-00805f9b34fb',
+  // Nordic UART Service (NUS) — ESP32, nRF52
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+  '6e400002-b5a3-f393-e0a9-e50e24dcca9e',
+  '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
+  // Common custom ranges
+  '0000fff0-0000-1000-8000-00805f9b34fb',
+  '0000fff1-0000-1000-8000-00805f9b34fb',
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '0000ff01-0000-1000-8000-00805f9b34fb',
+];
+
 export default function Bluetooth() {
   const [device, setDevice] = useState(null);
   const [server, setServer] = useState(null);
@@ -9,7 +29,8 @@ export default function Bluetooth() {
   const [log, setLog] = useState([]);
   const [sendValue, setSendValue] = useState('');
   const [hexMode, setHexMode] = useState(false);
-  const notifyRefs = useRef({}); // charUUID → characteristic (for unsubscribe)
+  const [extraUUIDs, setExtraUUIDs] = useState(''); // user-added UUIDs
+  const notifyRefs = useRef({});
   const supported = !!navigator.bluetooth;
 
   function addLog(msg, type = 'info') {
@@ -18,8 +39,10 @@ export default function Bluetooth() {
   }
 
   async function handleScan() {
+    const extra = extraUUIDs.split(/[\s,;]+/).filter(s => s.length > 0);
+    const optionalServices = [...COMMON_SERVICES, ...extra];
     try {
-      const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [] });
+      const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices });
       setDevice(dev);
       addLog(`Found: ${dev.name || dev.id}`, 'success');
       dev.addEventListener('gattserverdisconnected', () => {
@@ -135,7 +158,15 @@ export default function Bluetooth() {
         </div>
         <div style={{ flex: 1 }} />
         {!device ? (
-          <button className="btn primary" onClick={handleScan}><Icon name="bluetooth" /> Scan</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={extraUUIDs}
+              onChange={e => setExtraUUIDs(e.target.value)}
+              placeholder="Extra service UUIDs (optional, space/comma separated)"
+              style={{ width: 320, fontSize: 12, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', padding: '4px 8px', fontFamily: 'var(--font-mono)' }}
+            />
+            <button className="btn primary" onClick={handleScan}><Icon name="bluetooth" /> Scan</button>
+          </div>
         ) : !server ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{device.name || device.id}</span>
