@@ -13,9 +13,8 @@ jobs:
 
       - name: Build & restart
         run: |
-          cp ~/.mpcb-ssh.env .env
-          docker compose build --no-cache
-          docker compose up -d
+          docker compose --env-file ~/.mpcb-ssh.env build --no-cache
+          docker compose --env-file ~/.mpcb-ssh.env up -d
           docker image prune -f
 
       - name: Health check
