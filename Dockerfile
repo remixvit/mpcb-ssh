@@ -14,6 +14,7 @@ COPY server/package*.json ./
 RUN npm install --omit=dev
 COPY server/src/ ./src/
 COPY --from=frontend /client/dist ./client/dist
+COPY agent/ ./agent/
 RUN mkdir -p data
 EXPOSE 3000
 CMD ["node", "src/index.js"]

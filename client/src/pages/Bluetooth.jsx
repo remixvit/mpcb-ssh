@@ -21,6 +21,16 @@ const COMMON_SERVICES = [
   '0000ff01-0000-1000-8000-00805f9b34fb',
 ];
 
+// Full BLE SIG 16-bit service UUIDs (0x1800–0x183E) + vendor range (0xFF00–0xFFFF)
+// Used only for "Full Scan" — slow but finds everything
+const FULL_SERVICES = [
+  ...COMMON_SERVICES,
+  ...Array.from({ length: 0x183E - 0x1800 + 1 }, (_, i) => 0x1800 + i),
+  ...Array.from({ length: 0x100 }, (_, i) => 0xFF00 + i),
+];
+
+const LS_KEY = (id) => `ble_services_${id}`;
+
 export default function Bluetooth() {
   const [device, setDevice] = useState(null);
   const [server, setServer] = useState(null);
@@ -30,6 +40,7 @@ export default function Bluetooth() {
   const [sendValue, setSendValue] = useState('');
   const [hexMode, setHexMode] = useState(false);
   const [extraUUIDs, setExtraUUIDs] = useState(''); // user-added UUIDs
+  const [cachedDevice, setCachedDevice] = useState(null); // id of device with cached services
   const notifyRefs = useRef({});
   const supported = !!navigator.bluetooth;
 
@@ -38,13 +49,18 @@ export default function Bluetooth() {
     setLog(l => [...l.slice(-500), { ts, msg, type }]);
   }
 
-  async function handleScan() {
+  async function handleScan(fullScan = false) {
     const extra = extraUUIDs.split(/[\s,;]+/).filter(s => s.length > 0);
-    const optionalServices = [...COMMON_SERVICES, ...extra];
+    const optionalServices = fullScan
+      ? [...FULL_SERVICES, ...extra]
+      : [...COMMON_SERVICES, ...extra];
     try {
       const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices });
       setDevice(dev);
-      addLog(`Found: ${dev.name || dev.id}`, 'success');
+      // Check if we have cached services for this device
+      const cached = localStorage.getItem(LS_KEY(dev.id));
+      setCachedDevice(cached ? dev.id : null);
+      addLog(`Found: ${dev.name || dev.id}${cached ? ' (cached services)' : ''}${fullScan ? ' (full scan mode)' : ''}`, 'success');
       dev.addEventListener('gattserverdisconnected', () => {
         setServer(null); setServices([]); setSelected(null);
         addLog('Device disconnected', 'warn');
@@ -61,6 +77,12 @@ export default function Bluetooth() {
       setServer(gatt);
       const svcs = await gatt.getPrimaryServices();
       setServices(svcs);
+      // Cache discovered service UUIDs for this device
+      if (svcs.length > 0) {
+        const uuids = svcs.map(s => s.uuid);
+        localStorage.setItem(LS_KEY(device.id), JSON.stringify(uuids));
+        setCachedDevice(device.id);
+      }
       addLog(`Connected. ${svcs.length} service(s) found.`, 'success');
     } catch (err) {
       addLog(err.message, 'error');
@@ -163,15 +185,27 @@ export default function Bluetooth() {
               value={extraUUIDs}
               onChange={e => setExtraUUIDs(e.target.value)}
               placeholder="Extra service UUIDs (optional, space/comma separated)"
-              style={{ width: 320, fontSize: 12, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', padding: '4px 8px', fontFamily: 'var(--font-mono)' }}
+              style={{ width: 280, fontSize: 12, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', padding: '4px 8px', fontFamily: 'var(--font-mono)' }}
             />
-            <button className="btn primary" onClick={handleScan}><Icon name="bluetooth" /> Scan</button>
+            <button className="btn primary" onClick={() => handleScan(false)}><Icon name="bluetooth" /> Scan</button>
+            <button
+              className="btn ghost"
+              onClick={() => handleScan(true)}
+              title="Scans all Bluetooth SIG 16-bit UUIDs + vendor range. Slower but finds any device."
+            ><Icon name="bluetooth" /> Full Scan</button>
           </div>
         ) : !server ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{device.name || device.id}</span>
+            {cachedDevice === device.id && (
+              <span
+                style={{ fontSize: 11, color: '#89ddff', background: 'rgba(137,221,255,0.1)', border: '1px solid rgba(137,221,255,0.3)', borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}
+                title="Cached service UUIDs will be used. Click to clear."
+                onClick={() => { localStorage.removeItem(LS_KEY(device.id)); setCachedDevice(null); addLog('Cache cleared for this device', 'warn'); }}
+              >⚡ cached</span>
+            )}
             <button className="btn primary" onClick={handleConnect}>Connect</button>
-            <button className="btn ghost" onClick={() => { setDevice(null); }}>✕</button>
+            <button className="btn ghost" onClick={() => { setDevice(null); setCachedDevice(null); }}>✕</button>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

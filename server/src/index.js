@@ -7,7 +7,8 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 
 const { initDb } = require('./db/schema');
-const { handleConnection } = require('./ws/terminal');
+const { handleConnection }       = require('./ws/terminal');
+const { handleAgentConnection }  = require('./ws/agent');
 
 const authRouter = require('./routes/auth');
 const serversRouter = require('./routes/servers');
@@ -48,14 +49,23 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// WebSocket
+// WebSocket — terminal
 const wss = new WebSocketServer({ noServer: true });
 wss.on('connection', handleConnection);
 
+// WebSocket — agent
+const agentWss = new WebSocketServer({ noServer: true });
+agentWss.on('connection', (ws, req) => handleAgentConnection(ws, req));
+
 server.on('upgrade', (request, socket, head) => {
-  if (request.url === '/ws') {
+  const { url } = request;
+  if (url === '/ws') {
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, request);
+    });
+  } else if (url.startsWith('/ws/agent')) {
+    agentWss.handleUpgrade(request, socket, head, (ws) => {
+      agentWss.emit('connection', ws, request);
     });
   } else {
     socket.destroy();
