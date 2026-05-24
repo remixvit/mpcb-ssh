@@ -19,7 +19,8 @@
     "dotenv": "^16.4.5",
     "uuid": "^9.0.0",
     "cors": "^2.8.5",
-    "cookie-parser": "^1.4.6"
+    "cookie-parser": "^1.4.6",
+    "express-rate-limit": "^7.5.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
