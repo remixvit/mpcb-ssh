@@ -1,0 +1,26 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build & restart
+        run: |
+          docker compose build --no-cache
+          docker compose up -d
+          docker image prune -f
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -sf http://localhost:8882/api/auth/login \
+            -X POST -H "Content-Type: application/json" \
+            -d '{"username":"_","password":"_"}' | grep -q "Invalid" \
+            && echo "✓ Server is up" || echo "✗ Server not responding"
