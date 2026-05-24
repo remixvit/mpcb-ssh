@@ -7,11 +7,14 @@ const NAV = [
   { to: '/',        label: 'Dashboard', icon: 'dashboard', group: 'Workspace', end: true },
   { to: '/servers', label: 'Servers',   icon: 'server',    group: 'Workspace' },
   { to: '/keys',    label: 'SSH Keys',  icon: 'key',       group: 'Security' },
-  { to: '/tunnels', label: 'Tunnels',   icon: 'tunnel',    group: 'Network' },
-  { to: '/agents',  label: 'Agents',    icon: 'agent',     group: 'Network' },
+  { to: '/tunnels',   label: 'Tunnels',    icon: 'tunnel',     group: 'Network' },
+  { to: '/agents',   label: 'Agents',     icon: 'agent',      group: 'Network' },
+  { to: '/serial',   label: 'Serial',     icon: 'serial',     group: 'Tools' },
+  { to: '/bluetooth',label: 'Bluetooth',  icon: 'bluetooth',  group: 'Tools' },
+  { to: '/iot',      label: 'IoT Browser',icon: 'iot',        group: 'Tools' },
 ];
 
-const GROUPS = ['Workspace', 'Security', 'Network'];
+const GROUPS = ['Workspace', 'Security', 'Network', 'Tools'];
 
 export default function Layout({ children }) {
   const { user, logout } = useAuthStore();

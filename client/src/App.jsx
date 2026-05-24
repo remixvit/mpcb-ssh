@@ -10,6 +10,9 @@ import Keys from './pages/Keys';
 import KeyUpload from './pages/KeyUpload';
 import Tunnels from './pages/Tunnels';
 import Agents from './pages/Agents';
+import Serial from './pages/Serial';
+import Bluetooth from './pages/Bluetooth';
+import IoT from './pages/IoT';
 
 function PrivateRoute({ children }) {
   const token = useAuthStore(s => s.token);
@@ -33,6 +36,9 @@ export default function App() {
               <Route path="/keys/upload"   element={<KeyUpload />} />
               <Route path="/tunnels"     element={<Tunnels />} />
               <Route path="/agents"      element={<Agents />} />
+              <Route path="/serial"      element={<Serial />} />
+              <Route path="/bluetooth"   element={<Bluetooth />} />
+              <Route path="/iot"         element={<IoT />} />
             </Routes>
           </Layout>
         </PrivateRoute>
