@@ -213,10 +213,10 @@ export default function Terminal() {
   const activeTab    = tabs.find(t => t.tabId === activeTabId);
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', margin: '-28px -32px -40px', background: '#0d1518' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', margin: '-28px -32px -40px', background: '#0d1518', position: 'relative' }}>
 
       {/* ── Tab bar ── */}
-      <div className="term-tabs" style={{ flexShrink: 0, position: 'relative' }}>
+      <div className="term-tabs" style={{ flexShrink: 0 }}>
         <button className="btn ghost sm" style={{ margin: '0 8px', padding: '4px 10px', fontSize: 12 }}
           onClick={() => navigate('/servers')}>
           <Icon name="arrowR" style={{ transform: 'rotate(180deg)' }} /> Back
@@ -240,34 +240,6 @@ export default function Terminal() {
 
         <div className="term-tab-add term-picker" title="New tab" onClick={() => setShowPicker(p => !p)}>+</div>
 
-        {showPicker && (
-          <div className="term-picker" style={{
-            position: 'absolute', top: 38, left: 0, zIndex: 200,
-            background: '#1a2226', border: '1px solid var(--border)',
-            borderRadius: 8, padding: 6, minWidth: 220,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-          }}>
-            <div style={{ padding: '4px 10px 6px', fontSize: 10, color: 'var(--text-faint)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
-              Open in new tab
-            </div>
-            {servers.length === 0
-              ? <div style={{ padding: '8px 10px', color: 'var(--text-faint)', fontSize: 12 }}>No servers</div>
-              : servers.map(s => (
-                <div key={s.id} onClick={() => addTab(s)} style={{
-                  padding: '7px 10px', borderRadius: 5, cursor: 'pointer', fontSize: 12,
-                  color: 'var(--text-2)', display: 'flex', justifyContent: 'space-between', gap: 12,
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.05)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <span>{s.name}</span>
-                  <span style={{ color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{s.host}</span>
-                </div>
-              ))
-            }
-          </div>
-        )}
-
         {activeStatus === 'disconnected' ? (
           <button className="btn ghost sm"
             style={{ marginLeft: 8, padding: '4px 10px', fontSize: 12, color: '#c3e88d', borderColor: '#c3e88d33' }}
@@ -283,6 +255,35 @@ export default function Terminal() {
           </div>
         )}
       </div>
+
+      {/* ── Server picker — sibling of tab bar so term-tabs overflow-x doesn't clip it ── */}
+      {showPicker && (
+        <div className="term-picker" style={{
+          position: 'absolute', top: 38, left: 0, zIndex: 200,
+          background: '#1a2226', border: '1px solid var(--border)',
+          borderRadius: 8, padding: 6, minWidth: 220,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        }}>
+          <div style={{ padding: '4px 10px 6px', fontSize: 10, color: 'var(--text-faint)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+            Open in new tab
+          </div>
+          {servers.length === 0
+            ? <div style={{ padding: '8px 10px', color: 'var(--text-faint)', fontSize: 12 }}>No servers</div>
+            : servers.map(s => (
+              <div key={s.id} onClick={() => addTab(s)} style={{
+                padding: '7px 10px', borderRadius: 5, cursor: 'pointer', fontSize: 12,
+                color: 'var(--text-2)', display: 'flex', justifyContent: 'space-between', gap: 12,
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.05)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <span>{s.name}</span>
+                <span style={{ color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{s.host}</span>
+              </div>
+            ))
+          }
+        </div>
+      )}
 
       {/* ── One TabSession per tab — stays mounted, hidden when inactive ── */}
       {tabs.map(tab => (
