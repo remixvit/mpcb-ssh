@@ -8,7 +8,7 @@ import { useAuthStore } from '../store/auth';
 import Icon from '../components/Icon';
 import api from '../api';
 
-const XTERM_THEME = {
+const THEME = {
   background: '#0d1518', foreground: '#eeffff',
   cursor: '#80cbc4', cursorAccent: '#0d1518',
   selectionBackground: 'rgba(128,203,196,0.25)',
@@ -20,28 +20,31 @@ const XTERM_THEME = {
 };
 
 let _counter = 0;
-const newId = () => ++_counter;
+const uid = () => ++_counter;
 
 export default function Terminal() {
-  const { id: initialServerId } = useParams();
-  const navigate  = useNavigate();
-  const location  = useLocation();
-  const { token } = useAuthStore();
+  const { id: initialId } = useParams();
+  const navigate           = useNavigate();
+  const location           = useLocation();
+  const { token }          = useAuthStore();
 
-  const [tabs, setTabs]         = useState(() => [{
-    tabId: newId(),
-    serverId: String(initialServerId),
-    serverName: location.state?.serverName || `#${initialServerId}`,
+  /* ── Tab state ── */
+  const firstTabId = useRef(uid());
+  const [tabs, setTabs]               = useState([{
+    tabId:      firstTabId.current,
+    serverId:   String(initialId),
+    serverName: location.state?.serverName || `#${initialId}`,
   }]);
-  const [activeTabId, setActiveTabId] = useState(() => tabs[0].tabId);
-  const [statuses, setStatuses]       = useState({});
-  const [servers, setServers]         = useState([]);
-  const [showPicker, setShowPicker]   = useState(false);
+  const [activeTabId, setActiveTabId] = useState(firstTabId.current);
+  const [statuses,    setStatuses]    = useState({});   // tabId → 'connecting'|'connected'|'disconnected'
+  const [servers,     setServers]     = useState([]);
+  const [showPicker,  setShowPicker]  = useState(false);
 
-  const tabRefs = useRef({});      // tabId → { container, term, fit, ws, sessionId }
-  const inited  = useRef(new Set());
+  /* ── Per-tab references (never trigger re-render) ── */
+  const containers = useRef({});   // tabId → DOM div
+  const xtermRefs  = useRef({});   // tabId → { term, fit, ws, sessionId }
 
-  // ── Fetch server list for picker + name resolution ─────────────────────────
+  /* ── Load server list for picker + name resolution ── */
   useEffect(() => {
     api.get('/servers').then(r => {
       setServers(r.data);
@@ -52,74 +55,112 @@ export default function Terminal() {
     }).catch(() => {});
   }, []);
 
-  // ── Close picker on outside click ─────────────────────────────────────────
+  /* ── Close picker on outside click ── */
   useEffect(() => {
     if (!showPicker) return;
-    const h = (e) => { if (!e.target.closest('.term-picker')) setShowPicker(false); };
+    const h = e => { if (!e.target.closest('.term-picker')) setShowPicker(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [showPicker]);
 
-  // ── Resize → refit active tab ──────────────────────────────────────────────
+  /* ── Window resize → refit active tab ── */
   useEffect(() => {
-    const onResize = () => refitTab(activeTabId);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const fn = () => refit(activeTabId);
+    window.addEventListener('resize', fn);
+    return () => window.removeEventListener('resize', fn);
   }, [activeTabId]);
 
-  // ── Cleanup on unmount ─────────────────────────────────────────────────────
+  /* ── Initialize xterm for each tab once its container is in the DOM ── */
   useEffect(() => {
-    return () => {
-      for (const refs of Object.values(tabRefs.current)) destroyRefs(refs);
-    };
+    tabs.forEach(tab => {
+      if (xtermRefs.current[tab.tabId]) return;   // already initialised
+      const el = containers.current[tab.tabId];
+      if (!el) return;                             // container not mounted yet
+
+      const term = new XTerm({
+        theme: THEME,
+        fontFamily: '"JetBrains Mono", Consolas, "Courier New", monospace',
+        fontSize: 13, lineHeight: 1.4, cursorBlink: true, scrollback: 5000,
+      });
+      const fit = new FitAddon();
+      term.loadAddon(fit);
+      term.loadAddon(new WebLinksAddon());
+      term.open(el);
+      fit.fit();
+
+      xtermRefs.current[tab.tabId] = { term, fit, ws: null, sessionId: null };
+
+      // copy on select
+      term.onSelectionChange(() => {
+        const sel = term.getSelection();
+        if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+      });
+
+      // paste on right-click
+      el.addEventListener('contextmenu', async e => {
+        e.preventDefault();
+        try {
+          const text = await navigator.clipboard.readText();
+          const r = xtermRefs.current[tab.tabId];
+          if (text && r?.ws?.readyState === WebSocket.OPEN && r.sessionId)
+            r.ws.send(JSON.stringify({ type: 'terminal:input', sessionId: r.sessionId, data: text }));
+        } catch {}
+      });
+
+      term.onData(data => {
+        const r = xtermRefs.current[tab.tabId];
+        if (r?.ws?.readyState === WebSocket.OPEN && r.sessionId)
+          r.ws.send(JSON.stringify({ type: 'terminal:input', sessionId: r.sessionId, data }));
+      });
+
+      openWS(tab.tabId, tab.serverId, term);
+    });
+  });  // runs after every render — cheap because of the early-return guard
+
+  /* ── Cleanup all on unmount ── */
+  useEffect(() => () => {
+    Object.values(xtermRefs.current).forEach(closeRefs);
   }, []);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function destroyRefs(refs) {
-    if (!refs) return;
+  /* ── Helpers ── */
+  function closeRefs(r) {
+    if (!r) return;
     try {
-      if (refs.sessionId && refs.ws?.readyState === WebSocket.OPEN)
-        refs.ws.send(JSON.stringify({ type: 'terminal:close', sessionId: refs.sessionId }));
+      if (r.sessionId && r.ws?.readyState === WebSocket.OPEN)
+        r.ws.send(JSON.stringify({ type: 'terminal:close', sessionId: r.sessionId }));
     } catch {}
-    refs.ws?.close();
-    refs.term?.dispose();
+    r.ws?.close();
+    r.term?.dispose();
   }
 
-  function refitTab(tabId) {
-    const r = tabRefs.current[tabId];
+  function refit(tabId) {
+    const r = xtermRefs.current[tabId];
     if (!r?.fit) return;
     r.fit.fit();
-    if (r.ws?.readyState === WebSocket.OPEN && r.sessionId) {
-      r.ws.send(JSON.stringify({
-        type: 'terminal:resize', sessionId: r.sessionId,
-        cols: r.term.cols, rows: r.term.rows,
-      }));
-    }
+    if (r.ws?.readyState === WebSocket.OPEN && r.sessionId)
+      r.ws.send(JSON.stringify({ type: 'terminal:resize', sessionId: r.sessionId, cols: r.term.cols, rows: r.term.rows }));
   }
 
-  function connectTab(tabId, serverId) {
-    const refs = tabRefs.current[tabId];
-    if (!refs?.term) return;
-    const { term } = refs;
-
+  function openWS(tabId, serverId, term) {
+    const r = xtermRefs.current[tabId];
+    if (!r) return;
     setStatuses(p => ({ ...p, [tabId]: 'connecting' }));
-    refs.sessionId = null;
+    r.sessionId = null;
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}/ws`);
-    refs.ws = ws;
+    const ws    = new WebSocket(`${proto}//${location.host}/ws`);
+    r.ws = ws;
 
     ws.onopen = () => ws.send(JSON.stringify({
-      type: 'terminal:open',
-      serverId: parseInt(serverId), token,
+      type: 'terminal:open', serverId: parseInt(serverId), token,
       decryptionKey: sessionStorage.getItem('decryptionKey'),
       cols: term.cols, rows: term.rows,
     }));
 
-    ws.onmessage = (e) => {
+    ws.onmessage = e => {
       const msg = JSON.parse(e.data);
       if (msg.type === 'terminal:opened') {
-        refs.sessionId = msg.sessionId;
+        r.sessionId = msg.sessionId;
         setStatuses(p => ({ ...p, [tabId]: 'connected' }));
       } else if (msg.type === 'terminal:data') {
         const bin = atob(msg.data);
@@ -140,126 +181,78 @@ export default function Terminal() {
     ws.onerror = () => setStatuses(p => ({ ...p, [tabId]: 'disconnected' }));
   }
 
-  function initTab(tabId, serverId, container) {
-    if (inited.current.has(tabId) || !container) return;
-    inited.current.add(tabId);
-
-    const term = new XTerm({
-      theme: XTERM_THEME,
-      fontFamily: '"JetBrains Mono", Consolas, "Courier New", monospace',
-      fontSize: 13, lineHeight: 1.4, cursorBlink: true, scrollback: 5000,
-    });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon());
-
-    // ← Set refs BEFORE open/connect so connectTab can find them
-    tabRefs.current[tabId] = { container, term, fit, ws: null, sessionId: null };
-
-    term.open(container);
-    fit.fit();
-
-    term.onSelectionChange(() => {
-      const sel = term.getSelection();
-      if (sel) navigator.clipboard.writeText(sel).catch(() => {});
-    });
-
-    container.addEventListener('contextmenu', async (e) => {
-      e.preventDefault();
-      try {
-        const text = await navigator.clipboard.readText();
-        const r = tabRefs.current[tabId];
-        if (text && r?.ws?.readyState === WebSocket.OPEN && r.sessionId)
-          r.ws.send(JSON.stringify({ type: 'terminal:input', sessionId: r.sessionId, data: text }));
-      } catch {}
-    });
-
-    term.onData(data => {
-      const r = tabRefs.current[tabId];
-      if (r?.ws?.readyState === WebSocket.OPEN && r.sessionId)
-        r.ws.send(JSON.stringify({ type: 'terminal:input', sessionId: r.sessionId, data }));
-    });
-
-    connectTab(tabId, serverId);
-  }
-
-  // ── Tab actions ────────────────────────────────────────────────────────────
-  function handleActivate(tabId) {
+  /* ── Tab actions ── */
+  function activateTab(tabId) {
     setActiveTabId(tabId);
-    setTimeout(() => refitTab(tabId), 20);
+    setTimeout(() => refit(tabId), 20);
   }
 
-  function handleAddTab(server) {
-    const tabId = newId();
+  function addTab(server) {
+    const tabId = uid();
     setTabs(p => [...p, { tabId, serverId: String(server.id), serverName: server.name }]);
     setActiveTabId(tabId);
     setShowPicker(false);
   }
 
-  function handleCloseTab(e, tabId) {
+  function closeTab(e, tabId) {
     e.stopPropagation();
-    destroyRefs(tabRefs.current[tabId]);
-    delete tabRefs.current[tabId];
-    inited.current.delete(tabId);
+    closeRefs(xtermRefs.current[tabId]);
+    delete xtermRefs.current[tabId];
+    delete containers.current[tabId];
 
     setTabs(prev => {
       const next = prev.filter(t => t.tabId !== tabId);
       if (next.length === 0) { navigate('/servers'); return prev; }
       if (activeTabId === tabId) {
         const idx = prev.findIndex(t => t.tabId === tabId);
-        const fallback = next[Math.min(idx, next.length - 1)];
-        setActiveTabId(fallback.tabId);
-        setTimeout(() => refitTab(fallback.tabId), 20);
+        const nb  = next[Math.min(idx, next.length - 1)];
+        setActiveTabId(nb.tabId);
+        setTimeout(() => refit(nb.tabId), 20);
       }
       return next;
     });
   }
 
-  function handleReconnect(tabId, serverId) {
-    const refs = tabRefs.current[tabId];
-    if (!refs) return;
-    refs.ws?.close();
-    refs.term.write('\r\n\x1b[90m--- Reconnecting... ---\x1b[0m\r\n');
-    connectTab(tabId, serverId);
+  function reconnect(tabId, serverId) {
+    const r = xtermRefs.current[tabId];
+    if (!r) return;
+    r.ws?.close();
+    r.term.write('\r\n\x1b[90m--- Reconnecting... ---\x1b[0m\r\n');
+    openWS(tabId, serverId, r.term);
   }
 
   const activeTab    = tabs.find(t => t.tabId === activeTabId);
   const activeStatus = statuses[activeTabId];
 
+  /* ── Render ── */
   return (
-    <div style={{
-      height: '100vh', display: 'flex', flexDirection: 'column',
-      margin: '-28px -32px -40px', background: '#0d1518',
-    }}>
-      {/* ── Sticky tab bar ── */}
-      <div className="term-tabs" style={{ flexShrink: 0, position: 'sticky', top: 0, zIndex: 10, position: 'relative' }}>
-        <button className="btn ghost sm"
-          style={{ margin: '0 8px', padding: '4px 10px', fontSize: 12 }}
-          onClick={() => navigate('/servers')}
-        >
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', margin: '-28px -32px -40px', background: '#0d1518' }}>
+
+      {/* Tab bar */}
+      <div className="term-tabs" style={{ flexShrink: 0, position: 'relative' }}>
+        <button className="btn ghost sm" style={{ margin: '0 8px', padding: '4px 10px', fontSize: 12 }}
+          onClick={() => navigate('/servers')}>
           <Icon name="arrowR" style={{ transform: 'rotate(180deg)' }} /> Back
         </button>
 
-        {tabs.map(tab => {
-          const st = statuses[tab.tabId];
-          return (
-            <div key={tab.tabId}
-              className={`term-tab${tab.tabId === activeTabId ? ' active' : ''}`}
-              onClick={() => handleActivate(tab.tabId)}
-            >
-              <span className="row-tag-dot" style={{
-                background: st === 'disconnected' ? '#f07178' : 'var(--accent)',
-                boxShadow:  st === 'disconnected' ? 'none' : 'var(--accent-glow)',
-              }} />
-              <span>{tab.serverName}</span>
-              {tabs.length > 1 && (
-                <span className="close" onClick={e => handleCloseTab(e, tab.tabId)}>×</span>
-              )}
-            </div>
-          );
-        })}
+        {tabs.map(tab => (
+          <div key={tab.tabId}
+            className={`term-tab${tab.tabId === activeTabId ? ' active' : ''}`}
+            onClick={() => activateTab(tab.tabId)}
+          >
+            <span className="row-tag-dot" style={{
+              background: statuses[tab.tabId] === 'disconnected' ? '#f07178' : 'var(--accent)',
+              boxShadow:  statuses[tab.tabId] === 'disconnected' ? 'none' : 'var(--accent-glow)',
+            }} />
+            <span>{tab.serverName}</span>
+            {tabs.length > 1 && (
+              <span className="close" onClick={e => closeTab(e, tab.tabId)}>×</span>
+            )}
+          </div>
+        ))}
 
-        <div className="term-tab-add term-picker" onClick={() => setShowPicker(p => !p)} title="New tab">+</div>
+        {/* New tab button */}
+        <div className="term-tab-add term-picker" title="New tab" onClick={() => setShowPicker(p => !p)}>+</div>
 
         {showPicker && (
           <div className="term-picker" style={{
@@ -268,17 +261,17 @@ export default function Terminal() {
             borderRadius: 8, padding: 6, minWidth: 220,
             boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
           }}>
-            <div style={{ padding: '4px 10px 6px', fontSize: 10, color: 'var(--text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <div style={{ padding: '4px 10px 6px', fontSize: 10, color: 'var(--text-faint)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
               Open in new tab
             </div>
             {servers.length === 0
               ? <div style={{ padding: '8px 10px', color: 'var(--text-faint)', fontSize: 12 }}>No servers</div>
               : servers.map(s => (
-                <div key={s.id} onClick={() => handleAddTab(s)} style={{
+                <div key={s.id} onClick={() => addTab(s)} style={{
                   padding: '7px 10px', borderRadius: 5, cursor: 'pointer', fontSize: 12,
                   color: 'var(--text-2)', display: 'flex', justifyContent: 'space-between', gap: 12,
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.05)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <span>{s.name}</span>
@@ -292,8 +285,7 @@ export default function Terminal() {
         {activeStatus === 'disconnected' ? (
           <button className="btn ghost sm"
             style={{ marginLeft: 8, padding: '4px 10px', fontSize: 12, color: '#c3e88d', borderColor: '#c3e88d33' }}
-            onClick={() => activeTab && handleReconnect(activeTab.tabId, activeTab.serverId)}
-          >
+            onClick={() => activeTab && reconnect(activeTab.tabId, activeTab.serverId)}>
             <Icon name="refresh" /> Reconnect
           </button>
         ) : (
@@ -306,17 +298,11 @@ export default function Terminal() {
         )}
       </div>
 
-      {/* ── Terminal containers — all in DOM, inactive hidden ── */}
+      {/* Terminal containers — all stay in DOM, inactive hidden via visibility */}
       {tabs.map(tab => (
         <div key={tab.tabId}
-          style={{
-            flex: 1, padding: 4, minHeight: 0,
-            display: tab.tabId === activeTabId ? 'flex' : 'none',
-            flexDirection: 'column',
-          }}
-          ref={el => {
-            if (el && !inited.current.has(tab.tabId)) initTab(tab.tabId, tab.serverId, el);
-          }}
+          style={{ flex: 1, padding: 4, minHeight: 0, display: tab.tabId === activeTabId ? '' : 'none' }}
+          ref={el => { if (el) containers.current[tab.tabId] = el; }}
         />
       ))}
     </div>
