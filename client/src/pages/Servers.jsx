@@ -90,7 +90,7 @@ export default function Servers() {
                       <button className="btn ghost sm" title="Delete" onClick={() => handleDelete(s.id)}>
                         <Icon name="trash" />
                       </button>
-                      <button className="btn primary sm" onClick={() => navigate(`/terminal/${s.id}`)}>
+                      <button className="btn primary sm" onClick={() => navigate(`/terminal/${s.id}`, { state: { serverName: s.name } })}>
                         <Icon name="terminal" />Connect
                       </button>
                     </div>

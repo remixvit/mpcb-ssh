@@ -134,7 +134,7 @@ export default function Dashboard() {
                     <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{s.username}@{s.host}:{s.port}</td>
                     <td><StatusBadge status="offline" /></td>
                     <td style={{ textAlign: 'right' }}>
-                      <button className="btn primary sm" onClick={() => navigate(`/terminal/${s.id}`)}>
+                      <button className="btn primary sm" onClick={() => navigate(`/terminal/${s.id}`, { state: { serverName: s.name } })}>
                         <Icon name="terminal" />Connect
                       </button>
                     </td>
