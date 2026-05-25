@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -41,15 +41,17 @@ export default function Terminal() {
   // per-tab refs — never trigger re-renders
   const tabRefs  = useRef({});   // tabId → { container, term, fit, ws, sessionId }
   const inited   = useRef(new Set());
+  const [layoutReady, setLayoutReady] = useState(false);
 
-  // ── Patch .content to full-bleed terminal ──────────────────────────────────
-  useEffect(() => {
+  // ── Patch .content BEFORE paint so xterm gets correct dimensions ───────────
+  useLayoutEffect(() => {
     const el = document.querySelector('.content');
     if (!el) return;
     const prev = { overflow: el.style.overflow, padding: el.style.padding, position: el.style.position };
     el.style.overflow = 'hidden';
     el.style.padding  = '0';
     el.style.position = 'relative';
+    setLayoutReady(true);
     return () => Object.assign(el.style, prev);
   }, []);
 
@@ -330,8 +332,8 @@ export default function Terminal() {
         )}
       </div>
 
-      {/* ── Terminal containers (all rendered, inactive hidden) ── */}
-      {tabs.map(tab => (
+      {/* ── Terminal containers — only after layout is patched ── */}
+      {layoutReady && tabs.map(tab => (
         <div
           key={tab.tabId}
           style={{
