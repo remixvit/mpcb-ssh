@@ -10,6 +10,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - DB_PATH=/app/data/db.sqlite
+      - TELEGRAM_SERVICE_BOT_TOKEN=${TELEGRAM_SERVICE_BOT_TOKEN}
     restart: unless-stopped
 
 volumes:
