@@ -91,6 +91,19 @@ function initDb(dbPath) {
   // Migrations for existing databases
   try { db.exec('ALTER TABLE servers ADD COLUMN proxy_agent_id INTEGER REFERENCES agents(id)'); } catch {}
   try {
+    db.exec(`CREATE TABLE IF NOT EXISTS alert_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      agent_id INTEGER REFERENCES agents(id),
+      type TEXT NOT NULL,
+      threshold REAL,
+      cooldown INTEGER DEFAULT 300,
+      enabled INTEGER DEFAULT 1,
+      last_fired INTEGER DEFAULT 0,
+      created_at INTEGER DEFAULT (unixepoch())
+    )`);
+  } catch {}
+  try {
     db.exec(`CREATE TABLE IF NOT EXISTS kiosk_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id),

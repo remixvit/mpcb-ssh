@@ -16,6 +16,7 @@ import Bluetooth from './pages/Bluetooth';
 import IoT from './pages/IoT';
 import Kiosk from './pages/Kiosk';
 import Board from './pages/Board';
+import Alerts from './pages/Alerts';
 
 function PrivateRoute({ children }) {
   const { token, logout } = useAuthStore();
@@ -54,6 +55,7 @@ export default function App() {
               <Route path="/bluetooth"   element={<Bluetooth />} />
               <Route path="/iot"         element={<IoT />} />
               <Route path="/kiosk"       element={<Kiosk />} />
+              <Route path="/alerts"      element={<Alerts />} />
             </Routes>
           </Layout>
         </PrivateRoute>

@@ -3,6 +3,7 @@ const { Duplex }  = require('stream');
 const { randomUUID } = require('crypto');
 const bcrypt    = require('bcrypt');
 const { getDb } = require('../db/schema');
+const { sendTelegram } = require('../utils/telegram');
 
 // agentId → { ws, userId, cpu, mem, disk, uptime, load1, load5, load15, rxBps, txBps, proxies, pending }
 const connected = new Map();
@@ -45,6 +46,7 @@ async function handleAgentConnection(ws, req) {
   });
   db.prepare('UPDATE agents SET last_seen = unixepoch() WHERE id = ?').run(id);
   console.log(`[agent:ws] ${agent.name} (#${id}) connected`);
+  fireStatusAlert(id, agent.user_id, agent.name, true).catch(() => {});
 
   ws.on('message', (raw) => {
     let msg;
@@ -71,6 +73,9 @@ async function handleAgentConnection(ws, req) {
         entry.rxBps  = msg.rxBps  ?? null;
         entry.txBps  = msg.txBps  ?? null;
         db.prepare('UPDATE agents SET last_seen=unixepoch() WHERE id=?').run(id);
+        fireAlerts(id, agent.user_id, agent.name, {
+          cpu: entry.cpu, mem: entry.mem, disk: entry.disk,
+        }).catch(() => {});
         break;
 
       // ── Proxy responses from agent ──────────────────────────────────────────
@@ -109,6 +114,7 @@ async function handleAgentConnection(ws, req) {
     }
     connected.delete(id);
     console.log(`[agent:ws] ${agent.name} (#${id}) disconnected`);
+    fireStatusAlert(id, agent.user_id, agent.name, false).catch(() => {});
   });
 
   ws.on('error', () => {});
@@ -184,6 +190,60 @@ function createProxyStream(agentId, host, port) {
 
     entry.ws.send(JSON.stringify({ type: 'proxy:connect', id: connId, host, port }));
   });
+}
+
+// ── Alert helpers ────────────────────────────────────────────────────────────
+
+async function fireAlerts(agentId, userId, agentName, metrics) {
+  const db  = getDb();
+  const now = Math.floor(Date.now() / 1000);
+
+  const user = db.prepare('SELECT telegram_chat_id FROM users WHERE id = ?').get(userId);
+  if (!user?.telegram_chat_id) return;
+
+  const rules = db.prepare(`
+    SELECT * FROM alert_rules
+    WHERE user_id = ? AND enabled = 1
+      AND (agent_id = ? OR agent_id IS NULL)
+      AND type IN ('cpu','mem','disk')
+  `).all(userId, agentId);
+
+  for (const rule of rules) {
+    const val = metrics[rule.type];
+    if (val == null || val < rule.threshold) continue;
+    if (now - (rule.last_fired || 0) < rule.cooldown) continue;
+
+    const label = { cpu: 'CPU', mem: 'RAM', disk: 'Disk' }[rule.type];
+    await sendTelegram(user.telegram_chat_id,
+      `⚠️ <b>${agentName}</b> — ${label} <b>${Math.round(val)}%</b> (порог: ${rule.threshold}%)`
+    );
+    db.prepare('UPDATE alert_rules SET last_fired = ? WHERE id = ?').run(now, rule.id);
+  }
+}
+
+async function fireStatusAlert(agentId, userId, agentName, online) {
+  const db  = getDb();
+  const now = Math.floor(Date.now() / 1000);
+
+  const user = db.prepare('SELECT telegram_chat_id FROM users WHERE id = ?').get(userId);
+  if (!user?.telegram_chat_id) return;
+
+  const type = online ? 'online' : 'offline';
+  const rules = db.prepare(`
+    SELECT * FROM alert_rules
+    WHERE user_id = ? AND enabled = 1
+      AND (agent_id = ? OR agent_id IS NULL)
+      AND type = ?
+  `).all(userId, agentId, type);
+
+  for (const rule of rules) {
+    if (now - (rule.last_fired || 0) < rule.cooldown) continue;
+    const icon = online ? '🟢' : '🔴';
+    await sendTelegram(user.telegram_chat_id,
+      `${icon} <b>${agentName}</b> — ${online ? 'вернулся онлайн' : 'ушёл офлайн'}`
+    );
+    db.prepare('UPDATE alert_rules SET last_fired = ? WHERE id = ?').run(now, rule.id);
+  }
 }
 
 module.exports = { handleAgentConnection, isOnline, getStats, createProxyStream };

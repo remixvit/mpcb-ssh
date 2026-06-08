@@ -13,6 +13,7 @@ const NAV = [
   { to: '/bluetooth',label: 'Bluetooth',  icon: 'bluetooth',  group: 'Tools' },
   { to: '/iot',      label: 'IoT Browser',icon: 'iot',        group: 'Tools' },
   { to: '/kiosk',    label: 'Kiosk',      icon: 'kiosk',      group: 'Tools' },
+  { to: '/alerts',   label: 'Alerts',     icon: 'bolt',       group: 'Network' },
 ];
 
 const GROUPS = ['Workspace', 'Security', 'Network', 'Tools'];
