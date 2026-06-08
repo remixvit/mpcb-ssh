@@ -103,8 +103,7 @@ function TabSession({ serverId, active, token, onStatus, onReady }) {
       e.preventDefault();
       try {
         const text = await navigator.clipboard.readText();
-        if (text && wsRef.current?.readyState === WebSocket.OPEN && sessionRef.current)
-          wsRef.current.send(JSON.stringify({ type: 'terminal:input', sessionId: sessionRef.current, data: text }));
+        if (text) term.paste(text); // xterm wraps in bracketed-paste so bash won't execute mid-paste
       } catch {}
     });
 
