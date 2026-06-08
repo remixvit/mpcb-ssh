@@ -31,8 +31,12 @@ async function handleAgentConnection(ws, req) {
     return;
   }
 
+  // Prefer X-Forwarded-For (behind reverse proxy) then socket IP
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.socket.remoteAddress || null;
+
   connected.set(id, {
-    ws, userId: agent.user_id,
+    ws, userId: agent.user_id, ip,
     cpu: null, mem: null, disk: null,
     uptime: null, load1: null, load5: null, load15: null,
     rxBps: null, txBps: null,
@@ -119,6 +123,7 @@ function getStats(agentId) {
   const e = connected.get(agentId);
   if (!e) return {};
   return {
+    ip: e.ip,
     cpu: e.cpu, mem: e.mem, disk: e.disk,
     uptime: e.uptime,
     load1: e.load1, load5: e.load5, load15: e.load15,

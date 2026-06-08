@@ -49,11 +49,18 @@ function AgentCard({ a }) {
           background: a.online ? '#c3e88d' : '#f07178',
           boxShadow: a.online ? '0 0 6px #c3e88d' : 'none',
         }} />
-        <span style={{ fontSize: 16, fontWeight: 600, color: '#eeffff', flex: 1 }}>{a.name}</span>
-        {a.hostname && (
-          <span style={{ fontSize: 11, color: 'rgba(238,255,255,0.35)',
-            fontFamily: 'monospace' }}>{a.hostname}</span>
-        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#eeffff',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {a.name}
+          </div>
+          {(a.ip || a.hostname) && (
+            <div style={{ fontSize: 10, color: 'rgba(238,255,255,0.35)',
+              fontFamily: 'monospace', marginTop: 1 }}>
+              {a.ip || a.hostname}
+            </div>
+          )}
+        </div>
       </div>
 
       {!a.online ? (
