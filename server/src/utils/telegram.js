@@ -1,7 +1,16 @@
 'use strict';
+const { getDb } = require('../db/schema');
+
+function getBotToken() {
+  try {
+    const row = getDb().prepare("SELECT value FROM settings WHERE key = 'telegram_bot_token'").get();
+    if (row?.value) return row.value;
+  } catch {}
+  return process.env.TELEGRAM_SERVICE_BOT_TOKEN || null;
+}
 
 async function sendTelegram(chatId, text) {
-  const token = process.env.TELEGRAM_SERVICE_BOT_TOKEN;
+  const token = getBotToken();
   if (!token || !chatId) return;
   try {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -14,4 +23,4 @@ async function sendTelegram(chatId, text) {
   }
 }
 
-module.exports = { sendTelegram };
+module.exports = { getBotToken, sendTelegram };

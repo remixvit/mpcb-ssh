@@ -91,6 +91,12 @@ function initDb(dbPath) {
   // Migrations for existing databases
   try { db.exec('ALTER TABLE servers ADD COLUMN proxy_agent_id INTEGER REFERENCES agents(id)'); } catch {}
   try {
+    db.exec(`CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    )`);
+  } catch {}
+  try {
     db.exec(`CREATE TABLE IF NOT EXISTS alert_rules (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id),

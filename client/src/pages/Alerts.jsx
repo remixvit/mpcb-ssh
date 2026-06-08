@@ -16,6 +16,9 @@ export default function Alerts() {
   const [form,    setForm]    = useState(EMPTY_RULE);
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState('');
+  const [botToken,    setBotToken]    = useState('');
+  const [botConfigured, setBotConfigured] = useState(false);
+  const [botMasked,   setBotMasked]   = useState(null);
 
   useEffect(() => {
     load();
@@ -23,6 +26,10 @@ export default function Alerts() {
     api.get('/alerts/telegram').then(r => {
       setSavedChatId(r.data.chat_id);
       if (r.data.chat_id) setChatId(r.data.chat_id);
+    }).catch(() => {});
+    api.get('/alerts/telegram/token').then(r => {
+      setBotConfigured(r.data.configured);
+      setBotMasked(r.data.masked);
     }).catch(() => {});
   }, []);
 
@@ -72,6 +79,20 @@ export default function Alerts() {
     setTestMsg('');
   }
 
+  async function saveBotToken() {
+    if (!botToken) return;
+    await api.post('/alerts/telegram/token', { token: botToken });
+    setBotConfigured(true);
+    setBotMasked(botToken.slice(0, 8) + '…');
+    setBotToken('');
+  }
+
+  async function removeBotToken() {
+    await api.delete('/alerts/telegram/token');
+    setBotConfigured(false);
+    setBotMasked(null);
+  }
+
   function set(f, v) { setForm(p => ({ ...p, [f]: v })); }
 
   const agentName = id => agents.find(a => String(a.id) === String(id))?.name || 'Все агенты';
@@ -82,6 +103,33 @@ export default function Alerts() {
         <div>
           <div className="page-title">Alerts</div>
           <div className="page-sub">Уведомления по CPU, RAM, диску и статусу агентов</div>
+        </div>
+      </div>
+
+      {/* ── Bot token ── */}
+      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>
+          Telegram Bot Token
+        </div>
+        {botConfigured ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ color: '#c3e88d', fontSize: 13 }}>✅ Настроен ({botMasked})</span>
+            <button className="btn ghost sm" onClick={removeBotToken} style={{ color: 'var(--danger)' }}>
+              Удалить
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input className="input mono" style={{ flex: 1 }} value={botToken}
+              onChange={e => setBotToken(e.target.value)}
+              placeholder="1234567890:AAFxxxxxxxxxxxxxxxxxxxxxx" type="password" />
+            <button className="btn primary" onClick={saveBotToken} disabled={!botToken}>
+              Сохранить
+            </button>
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 8 }}>
+          Получить токен: @BotFather → /newbot
         </div>
       </div>
 

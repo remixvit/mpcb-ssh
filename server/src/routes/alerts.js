@@ -2,7 +2,7 @@
 const express = require('express');
 const { getDb }        = require('../db/schema');
 const { authenticate } = require('../middleware/auth');
-const { sendTelegram } = require('../utils/telegram');
+const { sendTelegram, getBotToken } = require('../utils/telegram');
 
 const router = express.Router();
 router.use(authenticate);
@@ -63,13 +63,34 @@ router.delete('/rules/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Telegram bot token (stored in DB) ────────────────────────────────────────
+
+router.get('/telegram/token', (req, res) => {
+  const token = getBotToken();
+  // Return masked token so UI knows it's set, but not the actual value
+  res.json({ configured: !!token, masked: token ? token.slice(0, 8) + '…' : null });
+});
+
+router.post('/telegram/token', (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'token required' });
+  getDb().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('telegram_bot_token', ?)")
+    .run(token);
+  res.json({ ok: true });
+});
+
+router.delete('/telegram/token', (req, res) => {
+  getDb().prepare("DELETE FROM settings WHERE key = 'telegram_bot_token'").run();
+  res.json({ ok: true });
+});
+
 // ── Telegram chat_id ──────────────────────────────────────────────────────────
 
 router.post('/telegram/test', async (req, res) => {
   const { chat_id } = req.body;
   if (!chat_id) return res.status(400).json({ error: 'chat_id required' });
-  if (!process.env.TELEGRAM_SERVICE_BOT_TOKEN)
-    return res.status(503).json({ error: 'TELEGRAM_SERVICE_BOT_TOKEN not set on server' });
+  if (!getBotToken())
+    return res.status(503).json({ error: 'Telegram bot token не настроен — введите его выше' });
 
   await sendTelegram(chat_id, '✅ <b>MPCB SSH</b> — Telegram алерты подключены!');
   // Save chat_id
