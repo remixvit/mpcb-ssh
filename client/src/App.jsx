@@ -14,6 +14,8 @@ import Agents from './pages/Agents';
 import Serial from './pages/Serial';
 import Bluetooth from './pages/Bluetooth';
 import IoT from './pages/IoT';
+import Kiosk from './pages/Kiosk';
+import Board from './pages/Board';
 
 function PrivateRoute({ children }) {
   const { token, logout } = useAuthStore();
@@ -34,6 +36,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/board" element={<Board />} />
       <Route path="/*" element={
         <PrivateRoute>
           <Layout>
@@ -50,6 +53,7 @@ export default function App() {
               <Route path="/serial"      element={<Serial />} />
               <Route path="/bluetooth"   element={<Bluetooth />} />
               <Route path="/iot"         element={<IoT />} />
+              <Route path="/kiosk"       element={<Kiosk />} />
             </Routes>
           </Layout>
         </PrivateRoute>

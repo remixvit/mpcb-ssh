@@ -90,6 +90,15 @@ function initDb(dbPath) {
 
   // Migrations for existing databases
   try { db.exec('ALTER TABLE servers ADD COLUMN proxy_agent_id INTEGER REFERENCES agents(id)'); } catch {}
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS kiosk_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      name TEXT NOT NULL DEFAULT 'Display',
+      token_hash TEXT NOT NULL,
+      created_at INTEGER DEFAULT (unixepoch())
+    )`);
+  } catch {}
 
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
   if (userCount.count === 0) {

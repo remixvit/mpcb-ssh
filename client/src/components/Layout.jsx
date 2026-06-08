@@ -12,6 +12,7 @@ const NAV = [
   { to: '/serial',   label: 'Serial',     icon: 'serial',     group: 'Tools' },
   { to: '/bluetooth',label: 'Bluetooth',  icon: 'bluetooth',  group: 'Tools' },
   { to: '/iot',      label: 'IoT Browser',icon: 'iot',        group: 'Tools' },
+  { to: '/kiosk',    label: 'Kiosk',      icon: 'kiosk',      group: 'Tools' },
 ];
 
 const GROUPS = ['Workspace', 'Security', 'Network', 'Tools'];

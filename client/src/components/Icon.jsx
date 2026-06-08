@@ -40,6 +40,7 @@ const ICONS = {
   clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></>,
   tag: <><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.3"/></>,
   doc: <><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v6h6"/></>,
+  kiosk: <><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M7 9h2M11 9h6M7 12h4M13 12h4"/></>,
 };
 
 export default function Icon({ name, className = 'ico', style, ...rest }) {

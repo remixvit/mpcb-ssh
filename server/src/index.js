@@ -15,6 +15,7 @@ const serversRouter = require('./routes/servers');
 const keysRouter = require('./routes/keys');
 const tunnelsRouter = require('./routes/tunnels');
 const agentsRouter = require('./routes/agents');
+const kioskRouter  = require('./routes/kiosk');
 
 const app = express();
 const server = http.createServer(app);
@@ -40,6 +41,7 @@ app.use('/api/servers', serversRouter);
 app.use('/api/keys', keysRouter);
 app.use('/api/tunnels', tunnelsRouter);
 app.use('/api/agents', agentsRouter);
+app.use('/api/kiosk',  kioskRouter);
 
 // Serve frontend in production
 if (process.env.NODE_ENV === 'production') {
