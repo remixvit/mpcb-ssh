@@ -1,6 +1,6 @@
 # MPCB SSH
 
-Self-hosted web SSH manager with terminal, key management, tunnel control, serial/Bluetooth debugging, and agent monitoring. Think Termius/MobaXterm but accessible from any browser.
+Self-hosted web SSH manager with terminal, key management, tunnel control, serial/Bluetooth debugging, agent monitoring and alerting. Think Termius/MobaXterm but accessible from any browser.
 
 ## Stack
 
@@ -34,6 +34,7 @@ cd client && npm install && npm run dev   # :5173, proxies /api + /ws to :3000
 | Feature | Status |
 |---|---|
 | SSH terminal (xterm.js + ssh2) | ✅ |
+| Multi-tab terminal with server names | ✅ |
 | SSH key management (PEM + PPK auto-convert) | ✅ |
 | Port tunnels — local / remote / dynamic SOCKS5 | ✅ |
 | Tunnel start/stop from UI | ✅ |
@@ -43,6 +44,9 @@ cd client && npm install && npm run dev   # :5173, proxies /api + /ws to :3000
 | Agent daemons — CPU/mem/disk/uptime/load/network | ✅ |
 | Agent TCP proxy — SSH via agent, no VPN needed | ✅ |
 | ProxyJump (SSH bastion/jump host) | ✅ |
+| Telegram alerts — CPU/RAM/disk thresholds + offline/online | ✅ |
+| Status board (`/board`) — fullscreen dashboard for displays | ✅ |
+| Kiosk tokens — read-only API for ESP32 / Raspberry Pi displays | ✅ |
 | Login rate limiting (10 req/min per IP) | ✅ |
 | Auto color prompt on SSH connect | ✅ |
 | PPK → OpenSSH auto-conversion on upload | ✅ |
@@ -126,6 +130,35 @@ MPCB_TOKEN=your64hextoken
 MPCB_NAME=My Server       # optional label
 ```
 
+## Telegram Alerts
+
+Set up in **Network → Alerts**:
+
+1. Paste your bot token (from [@BotFather](https://t.me/BotFather)) — stored encrypted in DB, no env var needed
+2. Enter your Telegram chat_id and click **Проверить** — a test message is sent and the id is saved
+3. Add rules: CPU / RAM / Disk threshold or offline / online per agent (with cooldown to avoid spam)
+
+## Status Board
+
+A fullscreen read-only dashboard for wall displays, Raspberry Pi kiosks, or ESP32 devices.
+
+### Raspberry Pi (Chromium kiosk)
+```bash
+chromium-browser --kiosk https://your-server/board?token=YOUR_KIOSK_TOKEN
+```
+
+### ESP32 / embedded devices
+Poll the JSON API every 5 seconds:
+```
+GET https://your-server/api/kiosk/stats?token=YOUR_KIOSK_TOKEN
+```
+Response:
+```json
+[{ "id": 1, "name": "prod-01", "online": true, "cpu": 23, "mem": 67, "disk": 41, "uptime": 86400, "load1": 0.4, "rxBps": 1024, "txBps": 512 }]
+```
+
+Generate kiosk tokens in **Tools → Kiosk** — tokens are read-only (stats only, no SSH/keys access).
+
 ## Password Change
 
 Changing the password re-derives the AES encryption key — all SSH keys are automatically re-encrypted:
@@ -151,4 +184,6 @@ docker compose --env-file ~/.mpcb-ssh.env up -d
 - [x] Phase 3 — Agent daemon (monitoring + TCP proxy)
 - [x] Tools — Web Serial, Web Bluetooth, IoT Browser
 - [x] Security — Rate limiting, AES-256-GCM key encryption
+- [x] Alerts — Telegram notifications for CPU/RAM/disk/offline/online
+- [x] Status Board — `/board` page + kiosk API for displays and ESP32
 - [ ] Phase 4 — 2FA (TOTP + backup codes)
