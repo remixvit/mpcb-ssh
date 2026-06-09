@@ -82,11 +82,18 @@ export default function Serial() {
       const sel = term.getSelection();
       if (sel) navigator.clipboard.writeText(sel).catch(() => {});
     });
+
+    // Forward key presses from terminal area to serial port
+    term.onData(data => {
+      if (writerRef.current)
+        writerRef.current.write(new TextEncoder().encode(data)).catch(() => {});
+    });
+
     containerRef.current.addEventListener('contextmenu', async e => {
       e.preventDefault();
       try {
         const text = await navigator.clipboard.readText();
-        if (text && writerRef.current) writerRef.current.write(new TextEncoder().encode(text));
+        if (text && writerRef.current) writerRef.current.write(new TextEncoder().encode(text)).catch(() => {});
       } catch {}
     });
     xtermRef.current = term;
