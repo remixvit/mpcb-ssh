@@ -105,6 +105,20 @@ function SensorConfigModal({ open, onClose, agent, onSaved }) {
           <span style={{ fontSize: 11 }}>Sensors require Linux + /sys/class/hwmon (agent v2.0+)</span>
         </div>
       ) : (
+        <>
+        <div style={{
+          fontSize: 11, color: 'var(--text-faint)', background: 'rgba(255,255,255,0.03)',
+          border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px',
+          marginBottom: 10, lineHeight: 1.7,
+        }}>
+          <b style={{ color: 'var(--text-2)' }}>Типы датчиков:</b>{' '}
+          <span style={{ color: '#89ddff' }}>acpitz</span> — материнка/BIOS &nbsp;·&nbsp;
+          <span style={{ color: '#89ddff' }}>coretemp</span> — CPU Intel (Package = весь чип) &nbsp;·&nbsp;
+          <span style={{ color: '#89ddff' }}>k10temp</span> — CPU AMD &nbsp;·&nbsp;
+          <span style={{ color: '#89ddff' }}>amdgpu/radeon</span> — GPU AMD &nbsp;·&nbsp;
+          <span style={{ color: '#89ddff' }}>nouveau</span> — GPU NVIDIA &nbsp;·&nbsp;
+          <span style={{ color: '#89ddff' }}>nvme</span> — SSD NVMe (Composite = средняя)
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {defs.map(d => {
             const checked = d.key in names;
@@ -141,6 +155,7 @@ function SensorConfigModal({ open, onClose, agent, onSaved }) {
             );
           })}
         </div>
+        </>
       )}
     </Modal>
   );
