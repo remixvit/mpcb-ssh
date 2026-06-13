@@ -119,7 +119,7 @@ function SensorConfigModal({ open, onClose, agent, onSaved }) {
           <span style={{ color: '#89ddff' }}>nouveau</span> — GPU NVIDIA &nbsp;·&nbsp;
           <span style={{ color: '#89ddff' }}>nvme</span> — SSD NVMe (Composite = средняя)
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
           {defs.map(d => {
             const checked = d.key in names;
             return (
