@@ -6,7 +6,7 @@ const path     = require('path');
 const fs       = require('fs');
 const { getDb }           = require('../db/schema');
 const { authenticate }    = require('../middleware/auth');
-const { isOnline, getStats } = require('../ws/agent');
+const { isOnline, getStats, sendCommand } = require('../ws/agent');
 
 const router = express.Router();
 
@@ -126,11 +126,13 @@ router.use(authenticate);
 
 router.get('/', (req, res) => {
   const rows = getDb()
-    .prepare('SELECT id, user_id, name, platform, hostname, last_seen, created_at FROM agents WHERE user_id = ?')
+    .prepare('SELECT id, user_id, name, platform, hostname, last_seen, sensor_defs, sensor_config, created_at FROM agents WHERE user_id = ?')
     .all(req.user.id);
 
   res.json(rows.map(a => ({
     ...a,
+    sensor_defs:   a.sensor_defs   ? JSON.parse(a.sensor_defs)   : null,
+    sensor_config: a.sensor_config ? JSON.parse(a.sensor_config) : null,
     online: isOnline(a.id),
     ...getStats(a.id),
   })));
@@ -149,6 +151,26 @@ router.post('/', async (req, res) => {
 
   // Token returned once — client must save it
   res.status(201).json({ id: result.lastInsertRowid, name, token });
+});
+
+router.patch('/:id/sensor-config', (req, res) => {
+  const { config } = req.body; // array of sensor keys
+  if (!Array.isArray(config)) return res.status(400).json({ error: 'config must be an array' });
+  const result = getDb()
+    .prepare('UPDATE agents SET sensor_config = ? WHERE id = ? AND user_id = ?')
+    .run(JSON.stringify(config), req.params.id, req.user.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+router.post('/:id/update', (req, res) => {
+  const db = getDb();
+  const agent = db.prepare('SELECT id FROM agents WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!agent) return res.status(404).json({ error: 'Not found' });
+  const sent = sendCommand(parseInt(req.params.id), { type: 'agent:update' });
+  if (!sent) return res.status(409).json({ error: 'Agent is offline' });
+  res.json({ ok: true });
 });
 
 router.delete('/:id', (req, res) => {

@@ -111,6 +111,32 @@ function AgentCard({ a }) {
               </div>
             ))}
           </div>
+
+          {/* Hardware sensors */}
+          {a.sensors && a.sensor_defs?.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+              {a.sensor_defs.map(d => {
+                const val = a.sensors[d.key];
+                if (val == null) return null;
+                const isHot = d.unit === '°C' && val > 75;
+                return (
+                  <div key={d.key} style={{
+                    background: 'rgba(0,0,0,0.3)',
+                    border: `1px solid ${isHot ? 'rgba(240,113,120,0.5)' : 'rgba(128,203,196,0.15)'}`,
+                    borderRadius: 5, padding: '3px 7px',
+                    fontSize: 10, fontFamily: 'monospace',
+                    color: isHot ? '#f07178' : 'rgba(238,255,255,0.7)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  }}>
+                    <span style={{ fontSize: 8, color: 'rgba(238,255,255,0.4)', marginBottom: 1 }}>
+                      {d.label.split(':').pop().trim()}
+                    </span>
+                    <span>{val}{d.unit}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </div>

@@ -42,6 +42,8 @@ cd client && npm install && npm run dev   # :5173, proxies /api + /ws to :3000
 | Web Bluetooth BLE inspector | ✅ |
 | IoT device browser (iframe) | ✅ |
 | Agent daemons — CPU/mem/disk/uptime/load/network | ✅ |
+| Agent hardware sensors — CPU/GPU/NVMe temps & fan speeds | ✅ |
+| Agent remote update — one-click update from UI | ✅ |
 | Agent TCP proxy — SSH via agent, no VPN needed | ✅ |
 | ProxyJump (SSH bastion/jump host) | ✅ |
 | Telegram alerts — CPU/RAM/disk thresholds + offline/online | ✅ |
@@ -57,6 +59,8 @@ cd client && npm install && npm run dev   # :5173, proxies /api + /ws to :3000
 
 The agent is a small Node.js daemon you install on remote machines. It connects back to the MPCB SSH server and:
 - Reports CPU / memory / disk / uptime / load average / network RX+TX in real time
+- Reports **hardware sensors** — CPU/GPU/NVMe temperatures and fan speeds (Linux `/sys/class/hwmon`)
+- Supports **remote update** — click "Update" in the UI, agent downloads the latest version and restarts
 - Acts as a **TCP proxy** — lets you SSH to servers in that network without a VPN
 
 ### Install (one-liner)
@@ -154,10 +158,36 @@ GET https://your-server/api/kiosk/stats?token=YOUR_KIOSK_TOKEN
 ```
 Response:
 ```json
-[{ "id": 1, "name": "prod-01", "online": true, "cpu": 23, "mem": 67, "disk": 41, "uptime": 86400, "load1": 0.4, "rxBps": 1024, "txBps": 512 }]
+[{
+  "id": 1, "name": "prod-01", "online": true,
+  "cpu": 23, "mem": 67, "disk": 41, "uptime": 86400, "load1": 0.4,
+  "rxBps": 1024, "txBps": 512,
+  "sensors": { "hwmon0_temp1": 58.0, "hwmon1_fan1": 1200 },
+  "sensor_defs": [
+    { "key": "hwmon0_temp1", "label": "coretemp: Package id 0", "unit": "°C" },
+    { "key": "hwmon1_fan1",  "label": "nct6775: Fan 1",        "unit": "RPM" }
+  ]
+}]
 ```
+`sensors` and `sensor_defs` appear only if the agent has sensors configured.
 
 Generate kiosk tokens in **Tools → Kiosk** — tokens are read-only (stats only, no SSH/keys access).
+
+## Agent Hardware Sensors
+
+Supported on **Linux** agents with `/sys/class/hwmon` (requires agent v2.0+):
+- CPU package & core temperatures
+- GPU temperature (nvidia, amd)
+- NVMe / HDD drive temperatures
+- Fan speeds (RPM)
+
+**Configure per-agent:** Agents → sensor button → pick which sensors to display.  
+Sensors appear on agent cards and in the `/board` kiosk view.
+
+## Agent Remote Update
+
+Click **↑ Update** on an agent card to push the latest `index.js` from the server.  
+The agent validates the new file with `node --check` before replacing, then calls `systemctl restart mpcb-agent`. If the restart fails, it calls `process.exit(0)` and systemd's `Restart=always` brings it back.
 
 ## Password Change
 
@@ -186,4 +216,6 @@ docker compose --env-file ~/.mpcb-ssh.env up -d
 - [x] Security — Rate limiting, AES-256-GCM key encryption
 - [x] Alerts — Telegram notifications for CPU/RAM/disk/offline/online
 - [x] Status Board — `/board` page + kiosk API for displays and ESP32
+- [x] Agent sensors — hardware temperature & fan monitoring with per-agent config
+- [x] Agent remote update — one-click agent self-update from UI
 - [ ] Phase 4 — 2FA (TOTP + backup codes)

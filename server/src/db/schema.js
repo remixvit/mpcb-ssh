@@ -118,6 +118,8 @@ function initDb(dbPath) {
       created_at INTEGER DEFAULT (unixepoch())
     )`);
   } catch {}
+  try { db.exec('ALTER TABLE agents ADD COLUMN sensor_defs TEXT'); } catch {}
+  try { db.exec('ALTER TABLE agents ADD COLUMN sensor_config TEXT'); } catch {}
 
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
   if (userCount.count === 0) {

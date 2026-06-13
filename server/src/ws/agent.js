@@ -5,7 +5,7 @@ const bcrypt    = require('bcrypt');
 const { getDb } = require('../db/schema');
 const { sendTelegram } = require('../utils/telegram');
 
-// agentId → { ws, userId, cpu, mem, disk, uptime, load1, load5, load15, rxBps, txBps, proxies, pending }
+// agentId → { ws, userId, ip, cpu, mem, disk, uptime, load1..15, rxBps, txBps, sensors, proxies, pending }
 const connected = new Map();
 
 async function handleAgentConnection(ws, req) {
@@ -41,6 +41,7 @@ async function handleAgentConnection(ws, req) {
     cpu: null, mem: null, disk: null,
     uptime: null, load1: null, load5: null, load15: null,
     rxBps: null, txBps: null,
+    sensors: null,
     proxies: new Map(), // connId → Duplex stream
     pending: new Map(), // connId → { resolve, reject }
   });
@@ -56,10 +57,13 @@ async function handleAgentConnection(ws, req) {
     if (!entry) return;
 
     switch (msg.type) {
-      case 'agent:hello':
-        db.prepare('UPDATE agents SET hostname=?, platform=?, last_seen=unixepoch() WHERE id=?')
-          .run(msg.hostname ?? null, msg.platform ?? null, id);
+      case 'agent:hello': {
+        const defsJson = msg.sensorDefs?.length
+          ? JSON.stringify(msg.sensorDefs) : null;
+        db.prepare('UPDATE agents SET hostname=?, platform=?, sensor_defs=?, last_seen=unixepoch() WHERE id=?')
+          .run(msg.hostname ?? null, msg.platform ?? null, defsJson, id);
         break;
+      }
 
       case 'agent:ping':
       case 'agent:pong':
@@ -70,8 +74,9 @@ async function handleAgentConnection(ws, req) {
         entry.load1  = msg.load1  ?? null;
         entry.load5  = msg.load5  ?? null;
         entry.load15 = msg.load15 ?? null;
-        entry.rxBps  = msg.rxBps  ?? null;
-        entry.txBps  = msg.txBps  ?? null;
+        entry.rxBps   = msg.rxBps   ?? null;
+        entry.txBps   = msg.txBps   ?? null;
+        entry.sensors = msg.sensors ?? null;
         db.prepare('UPDATE agents SET last_seen=unixepoch() WHERE id=?').run(id);
         fireAlerts(id, agent.user_id, agent.name, {
           cpu: entry.cpu, mem: entry.mem, disk: entry.disk,
@@ -134,7 +139,15 @@ function getStats(agentId) {
     uptime: e.uptime,
     load1: e.load1, load5: e.load5, load15: e.load15,
     rxBps: e.rxBps, txBps: e.txBps,
+    sensors: e.sensors,
   };
+}
+
+function sendCommand(agentId, msg) {
+  const entry = connected.get(agentId);
+  if (!entry || entry.ws.readyState !== 1) return false;
+  entry.ws.send(JSON.stringify(msg));
+  return true;
 }
 
 /**
@@ -246,4 +259,4 @@ async function fireStatusAlert(agentId, userId, agentName, online) {
   }
 }
 
-module.exports = { handleAgentConnection, isOnline, getStats, createProxyStream };
+module.exports = { handleAgentConnection, isOnline, getStats, sendCommand, createProxyStream };

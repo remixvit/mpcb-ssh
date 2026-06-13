@@ -17,7 +17,7 @@ const SERVER_URL = process.env.MPCB_SERVER || flag('server') || '';
 const AGENT_ID   = process.env.MPCB_ID     || flag('id')     || '';
 const TOKEN      = process.env.MPCB_TOKEN  || flag('token')  || '';
 const NAME       = process.env.MPCB_NAME   || flag('name')   || os.hostname();
-const VERSION    = '1.3.0';
+const VERSION    = '2.0.0';
 
 if (!SERVER_URL || !AGENT_ID || !TOKEN) {
   console.error(
@@ -101,6 +101,52 @@ function getNetStats() {
   };
 }
 
+// ── Hardware sensors (Linux /sys/class/hwmon) ─────────────────────────────────
+function readHwmon() {
+  const result = {};
+  if (process.platform !== 'linux') return result;
+  try {
+    const base = '/sys/class/hwmon';
+    if (!fs.existsSync(base)) return result;
+    for (const dev of fs.readdirSync(base)) {
+      const dp = `${base}/${dev}`;
+      let devName = 'sensor';
+      try { devName = fs.readFileSync(`${dp}/name`, 'utf8').trim(); } catch {}
+      let files;
+      try { files = fs.readdirSync(dp); } catch { continue; }
+      for (const f of files) {
+        // Temperature sensors
+        const tm = f.match(/^temp(\d+)_input$/);
+        if (tm) {
+          const n = tm[1];
+          let label = `Core ${n}`;
+          try { label = fs.readFileSync(`${dp}/temp${n}_label`, 'utf8').trim(); } catch {}
+          try {
+            const val = parseFloat(fs.readFileSync(`${dp}/${f}`, 'utf8').trim()) / 1000;
+            if (!isNaN(val) && val > -40 && val < 150) {
+              result[`${dev}_temp${n}`] = { label: `${devName}: ${label}`, unit: '°C', value: +val.toFixed(1) };
+            }
+          } catch {}
+        }
+        // Fan sensors
+        const fm = f.match(/^fan(\d+)_input$/);
+        if (fm) {
+          const n = fm[1];
+          let label = `Fan ${n}`;
+          try { label = fs.readFileSync(`${dp}/fan${n}_label`, 'utf8').trim(); } catch {}
+          try {
+            const val = parseInt(fs.readFileSync(`${dp}/${f}`, 'utf8').trim());
+            if (!isNaN(val) && val >= 0) {
+              result[`${dev}_fan${n}`] = { label: `${devName}: ${label}`, unit: 'RPM', value: val };
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+  return result;
+}
+
 // ── Combined stats ────────────────────────────────────────────────────────────
 function getStats() {
   const totalMem = os.totalmem();
@@ -113,6 +159,12 @@ function getStats() {
   const uptime   = Math.round(os.uptime());
   const hasLoad  = loadavg[0] > 0 || loadavg[1] > 0;
   const net      = getNetStats();
+
+  // Sensor values: { key: value }
+  const hwmon  = readHwmon();
+  const sensors = {};
+  for (const [k, s] of Object.entries(hwmon)) sensors[k] = s.value;
+
   return {
     cpu, mem, disk, uptime,
     load1:  hasLoad ? +loadavg[0].toFixed(2) : null,
@@ -120,6 +172,7 @@ function getStats() {
     load15: hasLoad ? +loadavg[2].toFixed(2) : null,
     rxBps:  net?.rxBps ?? null,
     txBps:  net?.txBps ?? null,
+    sensors: Object.keys(sensors).length ? sensors : undefined,
   };
 }
 
@@ -155,6 +208,32 @@ function handleProxyConnect(ws, msg) {
   });
 }
 
+// ── Remote self-update ────────────────────────────────────────────────────────
+function handleUpdate(ws) {
+  console.log('[mpcb-agent] Remote update triggered');
+  const newFile = `${__filename}.new`;
+  const bakFile = `${__filename}.bak`;
+  try {
+    execSync(`curl -fsSL "${SERVER_URL}/api/agents/download" -o "${newFile}"`, { timeout: 30000 });
+    execSync(`node --check "${newFile}"`, { timeout: 5000 });
+    fs.copyFileSync(__filename, bakFile);
+    fs.renameSync(newFile, __filename);
+    console.log('[mpcb-agent] Update downloaded ✓ — restarting in 1s');
+    if (ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: 'agent:update:ok' }));
+    setTimeout(() => {
+      try { execSync('systemctl restart mpcb-agent', { timeout: 5000 }); } catch {
+        process.exit(0); // systemd Restart=always will bring it back
+      }
+    }, 1000);
+  } catch (err) {
+    console.error('[mpcb-agent] Update failed:', err.message);
+    try { fs.unlinkSync(newFile); } catch {}
+    if (ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: 'agent:update:error', error: err.message }));
+  }
+}
+
 // ── WebSocket connection ──────────────────────────────────────────────────────
 let pingTimer      = null;
 let reconnectTimer = null;
@@ -177,12 +256,19 @@ function connect() {
     clearTimeout(reconnectTimer);
     console.log('[mpcb-agent] Connected ✓');
 
+    // Discover available sensors and report with hello
+    const hwmon = readHwmon();
+    const sensorDefs = Object.entries(hwmon).map(([key, s]) => ({
+      key, label: s.label, unit: s.unit,
+    }));
+
     ws.send(JSON.stringify({
-      type:     'agent:hello',
-      name:     NAME,
-      hostname: os.hostname(),
-      platform: `${os.type()} ${os.release()} (${os.arch()})`,
-      version:  VERSION,
+      type:       'agent:hello',
+      name:       NAME,
+      hostname:   os.hostname(),
+      platform:   `${os.type()} ${os.release()} (${os.arch()})`,
+      version:    VERSION,
+      sensorDefs, // available sensors on this machine
     }));
 
     readRawNet();
@@ -219,13 +305,16 @@ function connect() {
         proxyConns.delete(msg.id);
         break;
       }
+
+      case 'agent:update':
+        handleUpdate(ws);
+        break;
     }
   });
 
   ws.on('close', (code) => {
     clearInterval(pingTimer);
     pingTimer = null;
-    // Clean up any open proxy connections
     for (const sock of proxyConns.values()) sock.destroy();
     proxyConns.clear();
     const delay = reconnectDelay;

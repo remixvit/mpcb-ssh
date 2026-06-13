@@ -22,6 +22,11 @@ function fmtBps(bps) {
   return `${(bps / 1048576).toFixed(1)} MB/s`;
 }
 
+function fmtSensor(val, unit) {
+  if (val == null) return '—';
+  return `${val}${unit}`;
+}
+
 // ── Meter bar ─────────────────────────────────────────────────────────────────
 function Meter({ label, value, online }) {
   const pct   = online && value != null ? value : 0;
@@ -39,12 +44,90 @@ function Meter({ label, value, online }) {
   );
 }
 
+// ── Sensor config modal ───────────────────────────────────────────────────────
+function SensorConfigModal({ open, onClose, agent, onSaved }) {
+  const defs   = agent.sensor_defs || [];
+  const [sel, setSel] = useState(() => new Set(agent.sensor_config || []));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setSel(new Set(agent.sensor_config || []));
+  }, [agent.sensor_config]);
+
+  function toggle(key) {
+    setSel(prev => {
+      const n = new Set(prev);
+      n.has(key) ? n.delete(key) : n.add(key);
+      return n;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.patch(`/agents/${agent.id}/sensor-config`, { config: [...sel] });
+      onSaved([...sel]);
+      onClose();
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Sensors — ${agent.name}`}
+      foot={
+        <>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }>
+      {defs.length === 0 ? (
+        <div style={{ color: 'var(--text-faint)', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
+          No hardware sensors detected on this agent.<br/>
+          <span style={{ fontSize: 11 }}>Sensors require Linux + /sys/class/hwmon (agent v2.0+)</span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {defs.map(d => (
+            <label key={d.key} style={{
+              display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+              padding: '8px 10px', borderRadius: 6,
+              background: sel.has(d.key) ? 'rgba(195,232,141,0.06)' : 'transparent',
+              border: `1px solid ${sel.has(d.key) ? 'rgba(195,232,141,0.2)' : 'var(--border)'}`,
+            }}>
+              <input type="checkbox" checked={sel.has(d.key)} onChange={() => toggle(d.key)}
+                style={{ accentColor: '#c3e88d', cursor: 'pointer' }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: 'var(--text)' }}>{d.label}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
+                  {d.key} · {d.unit}
+                  {agent.sensors?.[d.key] != null && (
+                    <span style={{ marginLeft: 8, color: '#89ddff' }}>
+                      {fmtSensor(agent.sensors[d.key], d.unit)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ── Agent card ────────────────────────────────────────────────────────────────
-function AgentCard({ agent, onDelete }) {
+function AgentCard({ agent, onDelete, onUpdate, onSensorConfig }) {
   const ago    = agent.last_seen ? new Date(agent.last_seen * 1000).toLocaleString() : null;
   const uptime = fmtUptime(agent.uptime);
   const hasLoad = agent.load1 != null;
   const hasNet  = agent.rxBps != null || agent.txBps != null;
+
+  // sensors to display = intersection of sensor_config keys and current sensors data
+  const selectedDefs = (agent.sensor_defs || []).filter(
+    d => agent.sensor_config?.includes(d.key)
+  );
+  const hasSensors = agent.online && selectedDefs.length > 0;
 
   return (
     <div className="card" style={{ padding: 16 }}>
@@ -60,7 +143,8 @@ function AgentCard({ agent, onDelete }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <b style={{ fontSize: 14 }}>{agent.name}</b>
           <div style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-            {agent.hostname || '—'}
+            {agent.ip ? agent.ip : agent.hostname || '—'}
+            {agent.ip && agent.hostname ? ` · ${agent.hostname}` : ''}
           </div>
         </div>
         <StatusBadge status={agent.online ? 'online' : 'offline'} />
@@ -83,6 +167,27 @@ function AgentCard({ agent, onDelete }) {
         </div>
       )}
 
+      {/* Hardware sensors */}
+      {hasSensors && (
+        <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {selectedDefs.map(d => {
+            const val = agent.sensors?.[d.key];
+            const isHot = d.unit === '°C' && val != null && val > 75;
+            return (
+              <div key={d.key} style={{
+                background: 'rgba(0,0,0,0.25)', border: `1px solid ${isHot ? 'rgba(240,113,120,0.4)' : 'var(--border)'}`,
+                borderRadius: 6, padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)',
+              }}>
+                <span style={{ color: 'var(--text-faint)' }}>{d.label} </span>
+                <span style={{ color: isHot ? '#f07178' : '#89ddff' }}>
+                  {fmtSensor(val, d.unit)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Footer */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12, fontSize: 11, color: 'var(--text-faint)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -100,6 +205,14 @@ function AgentCard({ agent, onDelete }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginTop: 12, justifyContent: 'flex-end' }}>
+        <button className="btn ghost sm" onClick={onSensorConfig} title="Configure sensors">
+          <Icon name="bolt" /> Sensors
+        </button>
+        {agent.online && (
+          <button className="btn ghost sm" onClick={onUpdate} title="Push update to agent">
+            ↑ Update
+          </button>
+        )}
         <button className="btn ghost sm" style={{ color: '#f07178' }} onClick={onDelete}>
           <Icon name="power" /> Revoke
         </button>
@@ -112,14 +225,12 @@ function AgentCard({ agent, onDelete }) {
 function CmdBlock({ prefix, children, onCopy, copied }) {
   return (
     <div style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
-      {/* Header row with copy button always visible */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px 4px 12px', borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.15)' }}>
         <span style={{ fontSize: 11, color: 'var(--text-faint)', userSelect: 'none', fontFamily: 'var(--font-mono)' }}>{prefix || '$'}</span>
         <button className={`btn sm ${copied ? '' : 'ghost'}`} style={{ padding: '2px 8px' }} onClick={onCopy}>
           <Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      {/* Code content */}
       <div style={{ padding: '10px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-2)' }}>
         {children}
       </div>
@@ -153,10 +264,8 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
     >{label}</button>
   );
 
-  // ── Linux content
   const linuxInstall = `curl -fsSL '${installUrl}' | sudo bash`;
 
-  // ── macOS content
   const macInstall = [
     `sudo mkdir -p /opt/mpcb-agent && cd /opt/mpcb-agent`,
     `sudo curl -fsSL '${srv}/api/agents/download' -o index.js`,
@@ -189,7 +298,6 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
     `sudo launchctl load -w /Library/LaunchDaemons/com.mpcb.agent.plist`,
   ].join('\n');
 
-  // ── Windows content
   const winInstall = [
     `cd $env:USERPROFILE`,
     `mkdir mpcb-agent -ErrorAction SilentlyContinue; cd mpcb-agent`,
@@ -224,14 +332,12 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
         Run the commands on the target machine. Token shown <b>once only</b>.
       </p>
 
-      {/* OS tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
         {tabBtn('linux', '🐧 Linux')}
         {tabBtn('mac',   '🍎 macOS')}
         {tabBtn('win',   '🪟 Windows')}
       </div>
 
-      {/* ── Linux ── */}
       {tab === 'linux' && (<>
         <p style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 8 }}>
           One-liner — downloads, installs dependencies, creates <b>systemd</b> service automatically.
@@ -252,13 +358,12 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
         </div>
       </>)}
 
-      {/* ── macOS ── */}
       {tab === 'mac' && (<>
         <p style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 6 }}>Step 1 — install:</p>
         <CmdBlock prefix="$" onCopy={() => copy('mac-install', macInstall)} copied={copied === 'mac-install'}>
           {macInstall}
         </CmdBlock>
-        <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '12px 0 6px' }}>Step 2 — auto-start via <b>launchd</b> (runs as daemon, survives reboot):</p>
+        <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '12px 0 6px' }}>Step 2 — auto-start via <b>launchd</b>:</p>
         <CmdBlock prefix="$" onCopy={() => copy('mac-auto', macAutoStart)} copied={copied === 'mac-auto'}>
           {macAutoStart}
         </CmdBlock>
@@ -267,13 +372,12 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
         </div>
       </>)}
 
-      {/* ── Windows ── */}
       {tab === 'win' && (<>
         <p style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 6 }}>Step 1 — install &amp; test (PowerShell):</p>
         <CmdBlock prefix="PS>" onCopy={() => copy('win-install', winInstall)} copied={copied === 'win-install'}>
           {winInstall}
         </CmdBlock>
-        <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '12px 0 6px' }}>Step 2 — auto-start via <b>Task Scheduler</b> (starts at logon, restarts on crash):</p>
+        <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '12px 0 6px' }}>Step 2 — auto-start via <b>Task Scheduler</b>:</p>
         <CmdBlock prefix="PS>" onCopy={() => copy('win-auto', winAutoStart)} copied={copied === 'win-auto'}>
           {winAutoStart}
         </CmdBlock>
@@ -291,9 +395,11 @@ function TokenModal({ open, onClose, agentId, agentName, token }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function Agents() {
-  const [agents,   setAgents]   = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [newAgent, setNewAgent] = useState(null);
+  const [agents,       setAgents]       = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [newAgent,     setNewAgent]     = useState(null);
+  const [sensorTarget, setSensorTarget] = useState(null); // agent for sensor config modal
+  const [updateMsg,    setUpdateMsg]    = useState('');   // flash message after update
 
   const load = useCallback(() =>
     api.get('/agents').then(r => setAgents(r.data)).finally(() => setLoading(false)),
@@ -319,6 +425,20 @@ export default function Agents() {
     setAgents(a => a.filter(x => x.id !== id));
   }
 
+  async function handleUpdate(id) {
+    try {
+      await api.post(`/agents/${id}/update`);
+      setUpdateMsg('✅ Update sent — agent will restart in ~1s');
+    } catch (e) {
+      setUpdateMsg('❌ ' + (e.response?.data?.error || 'Error'));
+    }
+    setTimeout(() => setUpdateMsg(''), 4000);
+  }
+
+  function handleSensorSaved(agentId, config) {
+    setAgents(prev => prev.map(a => a.id === agentId ? { ...a, sensor_config: config } : a));
+  }
+
   const online = agents.filter(a => a.online).length;
 
   return (
@@ -329,6 +449,11 @@ export default function Agents() {
           <div className="page-sub">{online} of {agents.length} online · helper daemons on managed machines</div>
         </div>
         <div style={{ flex: 1 }} />
+        {updateMsg && (
+          <span style={{ fontSize: 12, color: updateMsg.startsWith('✅') ? '#c3e88d' : '#f07178' }}>
+            {updateMsg}
+          </span>
+        )}
         <button className="btn primary" onClick={handleAdd}>
           <Icon name="bolt" /> Add agent
         </button>
@@ -350,7 +475,13 @@ export default function Agents() {
       ) : (
         <div className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
           {agents.map(a => (
-            <AgentCard key={a.id} agent={a} onDelete={() => handleDelete(a.id)} />
+            <AgentCard
+              key={a.id}
+              agent={a}
+              onDelete={() => handleDelete(a.id)}
+              onUpdate={() => handleUpdate(a.id)}
+              onSensorConfig={() => setSensorTarget(a)}
+            />
           ))}
         </div>
       )}
@@ -362,6 +493,15 @@ export default function Agents() {
           agentId={newAgent.id}
           agentName={newAgent.name}
           token={newAgent.token}
+        />
+      )}
+
+      {sensorTarget && (
+        <SensorConfigModal
+          open
+          agent={sensorTarget}
+          onClose={() => setSensorTarget(null)}
+          onSaved={(config) => handleSensorSaved(sensorTarget.id, config)}
         />
       )}
     </div>

@@ -21,17 +21,29 @@ router.get('/stats', (req, res) => {
   if (!row) return res.status(401).json({ error: 'invalid token' });
 
   const agents = db
-    .prepare('SELECT id, name, hostname, platform, last_seen FROM agents WHERE user_id = ?')
+    .prepare('SELECT id, name, hostname, platform, last_seen, sensor_config, sensor_defs FROM agents WHERE user_id = ?')
     .all(row.user_id);
 
-  res.json(agents.map(a => ({
-    id:       a.id,
-    name:     a.name,
-    hostname: a.hostname,
-    platform: a.platform,
-    online:   isOnline(a.id),
-    ...getStats(a.id),
-  })));
+  res.json(agents.map(a => {
+    const stats   = getStats(a.id);
+    const config  = a.sensor_config ? JSON.parse(a.sensor_config) : null;
+    const allDefs = a.sensor_defs   ? JSON.parse(a.sensor_defs)   : [];
+    // Filter sensors and their defs to user-configured keys
+    const sensors    = (config && stats.sensors)
+      ? Object.fromEntries(config.filter(k => k in stats.sensors).map(k => [k, stats.sensors[k]]))
+      : null;
+    const sensorDefs = config ? allDefs.filter(d => config.includes(d.key)) : [];
+    return {
+      id:       a.id,
+      name:     a.name,
+      hostname: a.hostname,
+      platform: a.platform,
+      online:   isOnline(a.id),
+      ...stats,
+      sensors,
+      sensor_defs: sensorDefs.length ? sensorDefs : undefined,
+    };
+  }));
 });
 
 // ── Authenticated: manage tokens ──────────────────────────────────────────────
