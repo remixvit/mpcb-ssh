@@ -243,7 +243,7 @@ export default function Serial() {
   );
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', margin: '-28px -32px -40px', background: '#0d1518' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', margin: '-28px -32px -40px', background: '#0d1518' }}>
 
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#111a1e', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>

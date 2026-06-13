@@ -36,7 +36,7 @@ export default function IoT() {
   }
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', margin: '-28px -32px -40px', background: 'var(--bg)' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', margin: '-28px -32px -40px', background: 'var(--bg)' }}>
       {/* Address bar */}
       <div style={{ display: 'flex', gap: 8, padding: '8px 12px', background: 'var(--bg-2)', borderBottom: '1px solid var(--border)', alignItems: 'center', flexShrink: 0 }}>
         <button className="btn ghost sm" onClick={() => iframeRef.current?.contentWindow?.history?.back()} title="Back">
