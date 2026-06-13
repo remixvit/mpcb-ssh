@@ -210,7 +210,7 @@ function AgentCard({ agent, onDelete, onUpdate, onSensorConfig }) {
         </button>
         {agent.online && (
           <button className="btn ghost sm" onClick={onUpdate} title="Push update to agent">
-            ↑ Update
+            Update
           </button>
         )}
         <button className="btn ghost sm" style={{ color: '#f07178' }} onClick={onDelete}>
