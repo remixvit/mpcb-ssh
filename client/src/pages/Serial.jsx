@@ -73,6 +73,7 @@ export default function Serial() {
       },
       fontFamily: '"JetBrains Mono", Consolas, "Courier New", monospace',
       fontSize: 13, lineHeight: 1.4, cursorBlink: true, scrollback: 5000,
+      convertEol: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
