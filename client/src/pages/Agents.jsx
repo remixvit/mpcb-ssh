@@ -44,29 +44,47 @@ function Meter({ label, value, online }) {
   );
 }
 
+// sensor_config format: [{key, name}] — name is user's custom label
+function normConfig(raw) {
+  if (!raw) return {};
+  const arr = Array.isArray(raw) ? raw : [];
+  const out = {};
+  for (const item of arr) {
+    if (typeof item === 'string') out[item] = '';
+    else if (item?.key) out[item.key] = item.name || '';
+  }
+  return out; // { key: customName }
+}
+
 // ── Sensor config modal ───────────────────────────────────────────────────────
 function SensorConfigModal({ open, onClose, agent, onSaved }) {
-  const defs   = agent.sensor_defs || [];
-  const [sel, setSel] = useState(() => new Set(agent.sensor_config || []));
+  const defs = agent.sensor_defs || [];
+  // state: { [key]: customName | '' } for checked sensors, key absent = unchecked
+  const [names, setNames] = useState(() => normConfig(agent.sensor_config));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setSel(new Set(agent.sensor_config || []));
+    setNames(normConfig(agent.sensor_config));
   }, [agent.sensor_config]);
 
   function toggle(key) {
-    setSel(prev => {
-      const n = new Set(prev);
-      n.has(key) ? n.delete(key) : n.add(key);
+    setNames(prev => {
+      const n = { ...prev };
+      if (key in n) delete n[key]; else n[key] = '';
       return n;
     });
+  }
+
+  function setName(key, val) {
+    setNames(prev => ({ ...prev, [key]: val }));
   }
 
   async function save() {
     setSaving(true);
     try {
-      await api.patch(`/agents/${agent.id}/sensor-config`, { config: [...sel] });
-      onSaved([...sel]);
+      const config = Object.entries(names).map(([key, name]) => ({ key, name: name.trim() }));
+      await api.patch(`/agents/${agent.id}/sensor-config`, { config });
+      onSaved(config);
       onClose();
     } finally { setSaving(false); }
   }
@@ -88,28 +106,40 @@ function SensorConfigModal({ open, onClose, agent, onSaved }) {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {defs.map(d => (
-            <label key={d.key} style={{
-              display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-              padding: '8px 10px', borderRadius: 6,
-              background: sel.has(d.key) ? 'rgba(195,232,141,0.06)' : 'transparent',
-              border: `1px solid ${sel.has(d.key) ? 'rgba(195,232,141,0.2)' : 'var(--border)'}`,
-            }}>
-              <input type="checkbox" checked={sel.has(d.key)} onChange={() => toggle(d.key)}
-                style={{ accentColor: '#c3e88d', cursor: 'pointer' }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: 'var(--text)' }}>{d.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
-                  {d.key} · {d.unit}
-                  {agent.sensors?.[d.key] != null && (
-                    <span style={{ marginLeft: 8, color: '#89ddff' }}>
-                      {fmtSensor(agent.sensors[d.key], d.unit)}
-                    </span>
-                  )}
+          {defs.map(d => {
+            const checked = d.key in names;
+            return (
+              <div key={d.key} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 10px', borderRadius: 6,
+                background: checked ? 'rgba(195,232,141,0.06)' : 'transparent',
+                border: `1px solid ${checked ? 'rgba(195,232,141,0.2)' : 'var(--border)'}`,
+              }}>
+                <input type="checkbox" checked={checked} onChange={() => toggle(d.key)}
+                  style={{ accentColor: '#c3e88d', cursor: 'pointer', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>
+                    {d.label}
+                    {agent.sensors?.[d.key] != null && (
+                      <span style={{ marginLeft: 8, color: '#89ddff' }}>
+                        {fmtSensor(agent.sensors[d.key], d.unit)}
+                      </span>
+                    )}
+                  </div>
                 </div>
+                {checked && (
+                  <input
+                    className="input"
+                    value={names[d.key]}
+                    onChange={e => setName(d.key, e.target.value)}
+                    placeholder={d.label.split(':').pop().trim()}
+                    style={{ width: 130, fontSize: 12, padding: '3px 8px' }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                )}
               </div>
-            </label>
-          ))}
+            );
+          })}
         </div>
       )}
     </Modal>
@@ -123,10 +153,9 @@ function AgentCard({ agent, onDelete, onUpdate, onSensorConfig }) {
   const hasLoad = agent.load1 != null;
   const hasNet  = agent.rxBps != null || agent.txBps != null;
 
-  // sensors to display = intersection of sensor_config keys and current sensors data
-  const selectedDefs = (agent.sensor_defs || []).filter(
-    d => agent.sensor_config?.includes(d.key)
-  );
+  // Build display list: sensor_config [{key,name}] × sensor_defs
+  const configMap = normConfig(agent.sensor_config); // { key: customName }
+  const selectedDefs = (agent.sensor_defs || []).filter(d => d.key in configMap);
   const hasSensors = agent.online && selectedDefs.length > 0;
 
   return (
@@ -173,12 +202,13 @@ function AgentCard({ agent, onDelete, onUpdate, onSensorConfig }) {
           {selectedDefs.map(d => {
             const val = agent.sensors?.[d.key];
             const isHot = d.unit === '°C' && val != null && val > 75;
+            const displayName = configMap[d.key] || d.label.split(':').pop().trim();
             return (
               <div key={d.key} style={{
                 background: 'rgba(0,0,0,0.25)', border: `1px solid ${isHot ? 'rgba(240,113,120,0.4)' : 'var(--border)'}`,
                 borderRadius: 6, padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)',
               }}>
-                <span style={{ color: 'var(--text-faint)' }}>{d.label} </span>
+                <span style={{ color: 'var(--text-faint)' }}>{displayName} </span>
                 <span style={{ color: isHot ? '#f07178' : '#89ddff' }}>
                   {fmtSensor(val, d.unit)}
                 </span>

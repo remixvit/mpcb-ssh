@@ -129,7 +129,7 @@ function AgentCard({ a }) {
                     display: 'flex', flexDirection: 'column', alignItems: 'center',
                   }}>
                     <span style={{ fontSize: 8, color: 'rgba(238,255,255,0.4)', marginBottom: 1 }}>
-                      {d.label.split(':').pop().trim()}
+                      {d.name || d.label.split(':').pop().trim()}
                     </span>
                     <span>{val}{d.unit}</span>
                   </div>

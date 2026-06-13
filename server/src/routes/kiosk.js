@@ -26,13 +26,22 @@ router.get('/stats', (req, res) => {
 
   res.json(agents.map(a => {
     const stats   = getStats(a.id);
-    const config  = a.sensor_config ? JSON.parse(a.sensor_config) : null;
-    const allDefs = a.sensor_defs   ? JSON.parse(a.sensor_defs)   : [];
-    // Filter sensors and their defs to user-configured keys
-    const sensors    = (config && stats.sensors)
-      ? Object.fromEntries(config.filter(k => k in stats.sensors).map(k => [k, stats.sensors[k]]))
+    const rawConfig = a.sensor_config ? JSON.parse(a.sensor_config) : null;
+    const allDefs   = a.sensor_defs   ? JSON.parse(a.sensor_defs)   : [];
+    // Normalize config: support both old [key] and new [{key,name}] format
+    const configItems = rawConfig
+      ? rawConfig.map(c => typeof c === 'string' ? { key: c, name: '' } : c)
       : null;
-    const sensorDefs = config ? allDefs.filter(d => config.includes(d.key)) : [];
+    const configKeys = configItems ? configItems.map(c => c.key) : null;
+    const sensors    = (configKeys && stats.sensors)
+      ? Object.fromEntries(configKeys.filter(k => k in stats.sensors).map(k => [k, stats.sensors[k]]))
+      : null;
+    // Merge defs with custom names from config
+    const sensorDefs = configKeys
+      ? allDefs
+          .filter(d => configKeys.includes(d.key))
+          .map(d => ({ ...d, name: configItems.find(c => c.key === d.key)?.name || '' }))
+      : [];
     return {
       id:       a.id,
       name:     a.name,

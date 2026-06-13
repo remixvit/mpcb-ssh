@@ -131,8 +131,10 @@ router.get('/', (req, res) => {
 
   res.json(rows.map(a => ({
     ...a,
-    sensor_defs:   a.sensor_defs   ? JSON.parse(a.sensor_defs)   : null,
-    sensor_config: a.sensor_config ? JSON.parse(a.sensor_config) : null,
+    sensor_defs:   a.sensor_defs ? JSON.parse(a.sensor_defs) : null,
+    sensor_config: a.sensor_config
+      ? JSON.parse(a.sensor_config).map(c => typeof c === 'string' ? { key: c, name: '' } : c)
+      : null,
     online: isOnline(a.id),
     ...getStats(a.id),
   })));
